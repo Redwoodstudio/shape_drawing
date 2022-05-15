@@ -5,7 +5,8 @@ use bevy_egui::{egui, EguiContext, EguiPlugin};
 use bevy_prototype_lyon::entity::ShapeBundle;
 
 fn main() {
-    App::new()
+    let mut app = App::new();
+    app
         .add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
@@ -16,8 +17,12 @@ fn main() {
         .add_system(camera_zoom)
         .add_system(ui_example)
         .init_resource::<MouseMovement>()
-        .init_resource::<Tool>()
-        .run();
+        .init_resource::<Tool>();
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_plugin(bevy_web_resizer::Plugin);
+    }
+    app.run();
 }
 
 #[derive(Default)]
@@ -36,7 +41,8 @@ enum ToolType {
 
 #[derive(Default)]
 struct Tool {
-    tool: ToolType
+    tool: ToolType,
+    color: [f32;4]
 }
 
 impl Default for ToolType {
@@ -68,7 +74,8 @@ fn spawn_rectangle(
                 .insert(Moving {
                     origin: mouse.position,
                 });
-            window.set_cursor_lock_mode(true);
+
+            //window.set_cursor_lock_mode(true);
         }
 
 
@@ -77,7 +84,7 @@ fn spawn_rectangle(
     if mouse_input.just_released(MouseButton::Left) {
         if let Ok((mut rectangle_draw_mode, id)) = query.get_single_mut() {
             if let DrawMode::Fill(ref mut fill_mode) = *rectangle_draw_mode {
-                fill_mode.color = Color::RED;
+                fill_mode.color = Color::from(tool.color);
             }
             commands.entity(id).remove::<Moving>();
             window.set_cursor_lock_mode(false);
@@ -116,7 +123,11 @@ fn camera_zoom(
     mouse: Res<MouseMovement>,
     mouse_button: Res<Input<MouseButton>>,
 ) {
-    let delta_zoom: f32 = whl.iter().map(|e| e.y).sum();
+    let mut delta_zoom: f32 = whl.iter().map(|e| e.y).sum();
+    #[cfg(target_arch = "wasm32")]
+    {
+        delta_zoom /= 100.0;
+    }
     let mut delta_movement = Vec2::ZERO;
     for i in mouse_movement
         .iter()
@@ -148,6 +159,8 @@ fn ui_example(mut egui_context: ResMut<EguiContext>, mut current: ResMut<Tool>) 
             ui.selectable_value(&mut current.tool, ToolType::Line, "Line");
         });
         ui.end_row();
+        ui.label("Choose shape color");
+        ui.color_edit_button_rgba_premultiplied(&mut current.color);
 
     });
 }
