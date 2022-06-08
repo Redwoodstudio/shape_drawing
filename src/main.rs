@@ -4,9 +4,7 @@ use crate::tess::path::path::Builder;
 use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy::window::PresentMode;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
-use bevy_prototype_lyon::entity::ShapeBundle;
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 
@@ -77,7 +75,6 @@ struct Moving {
     origin: Vec2
 }
 #[derive(Component)]
-#[derive(Clone)]
 struct PrimitiveShape {
     name: Option<String>,
     origin: Vec2,
@@ -99,18 +96,17 @@ fn spawn_camera(mut commands: Commands) {
     commands.spawn_bundle(GeometryBuilder::build_as(
         &shape,
         DrawMode::Fill(FillMode::color(Color::CRIMSON)),
-        Transform::default(),
+        Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),
     ));
 }
 fn primitive_handle_creation(
     mut commands: Commands,
     tool: Res<Tool>,
     mouse_input: Res<Input<MouseButton>>,
-    mut query: Query<(&Transform, Entity, &PrimitiveShape), (With<Moving>)>,
+    mut query: Query<Entity, With<Moving>>,
     mouse: Res<MouseMovement>,
 ) {
     if mouse_input.just_pressed(MouseButton::Left)  {
-        info!("Creation!");
         let shape = GeometryBuilder::build_as(
             &shapes::Rectangle {
                 extents: Vec2::ZERO,
@@ -131,34 +127,23 @@ fn primitive_handle_creation(
     }
 
     if mouse_input.just_released(MouseButton::Left) {
-        if let Ok((transform, id, shape)) = query.get_single_mut() {
-            info!("End: {:?}", transform);
+        if let Ok(id) = query.get_single_mut() {
             commands.entity(id).remove::<Moving>();
-            let new:PrimitiveShape = shape.clone();
-            commands.entity(id).remove::<PrimitiveShape>();
-            commands.entity(id).insert(new);
+            //commands.entity(id).remove::<PrimitiveShape>();
         }
     }
 }
 
 fn primitive_handle_update(
     mouse: Res<MouseMovement>,
-    mut query: Query<(&mut Path, &Moving, Entity), With<PrimitiveShape>>,
+    mut query: Query<(&mut Path, &Moving), With<PrimitiveShape>>,
 ) {
-    /*if let Ok((mut path, moving, entity)) = query.get_single_mut() {
-        info!("{:?}", entity);
+    if let Ok((mut path, moving)) = query.get_single_mut() {
         *path = ShapePath::build_as(&shapes::Rectangle {
             extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
             origin: RectangleOrigin::TopLeft,
         });
-    };*/
-    for (mut path, moving, entity) in query.iter_mut() {
-        info!("{:?}", entity);
-        *path = ShapePath::build_as(&shapes::Rectangle {
-            extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
-            origin: RectangleOrigin::TopLeft,
-        });
-    }
+    };
 }
 
 fn mouse_position(
