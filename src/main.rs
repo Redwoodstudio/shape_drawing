@@ -4,6 +4,7 @@ use crate::tess::path::path::Builder;
 use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
+use bevy::window::PresentMode;
 use bevy_egui::{egui, EguiContext, EguiPlugin};
 use bevy_prototype_lyon::entity::ShapeBundle;
 use bevy_prototype_lyon::prelude::*;
@@ -72,8 +73,11 @@ impl Default for ToolType {
     }
 }
 #[derive(Component)]
-struct Moving;
+struct Moving {
+    origin: Vec2
+}
 #[derive(Component)]
+#[derive(Clone)]
 struct PrimitiveShape {
     name: Option<String>,
     origin: Vec2,
@@ -102,45 +106,59 @@ fn primitive_handle_creation(
     mut commands: Commands,
     tool: Res<Tool>,
     mouse_input: Res<Input<MouseButton>>,
-    mut query: Query<(&Transform, Entity), With<Moving>>,
+    mut query: Query<(&Transform, Entity, &PrimitiveShape), (With<Moving>)>,
     mouse: Res<MouseMovement>,
 ) {
     if mouse_input.just_pressed(MouseButton::Left)  {
-            let shape = GeometryBuilder::build_as(
-                &shapes::Rectangle {
-                    extents: Vec2::ZERO,
-                    origin: RectangleOrigin::Center,
-                },
-                DrawMode::Fill(FillMode::color(Color::from(tool.color))),
-                Transform::from_translation(mouse.position.extend(0.1)),
-            );
-            commands
-                .spawn_bundle(shape)
-                .insert(Moving)
-                .insert(PrimitiveShape {
-                    name: None,
-                    origin: mouse.position,
-                });
-        }
+        info!("Creation!");
+        let shape = GeometryBuilder::build_as(
+            &shapes::Rectangle {
+                extents: Vec2::ZERO,
+                origin: RectangleOrigin::Center,
+            },
+            DrawMode::Fill(FillMode::color(Color::from(tool.color))),
+            Transform::from_translation(mouse.position.extend(0.1)),
+        );
+        commands
+            .spawn_bundle(shape)
+            .insert(Moving {
+                origin: mouse.position
+            })
+            .insert(PrimitiveShape {
+                name: None,
+                origin: mouse.position,
+            });
+    }
 
     if mouse_input.just_released(MouseButton::Left) {
-        if let Ok((transform, id)) = query.get_single_mut() {
+        if let Ok((transform, id, shape)) = query.get_single_mut() {
             info!("End: {:?}", transform);
             commands.entity(id).remove::<Moving>();
+            let new:PrimitiveShape = shape.clone();
+            commands.entity(id).remove::<PrimitiveShape>();
+            commands.entity(id).insert(new);
         }
     }
 }
 
 fn primitive_handle_update(
     mouse: Res<MouseMovement>,
-    mut query: Query<(&mut Path, &PrimitiveShape), With<Moving>>,
+    mut query: Query<(&mut Path, &Moving, Entity), With<PrimitiveShape>>,
 ) {
-    if let Ok((mut path, moving)) = query.get_single_mut() {
+    /*if let Ok((mut path, moving, entity)) = query.get_single_mut() {
+        info!("{:?}", entity);
         *path = ShapePath::build_as(&shapes::Rectangle {
             extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
             origin: RectangleOrigin::TopLeft,
         });
-    };
+    };*/
+    for (mut path, moving, entity) in query.iter_mut() {
+        info!("{:?}", entity);
+        *path = ShapePath::build_as(&shapes::Rectangle {
+            extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
+            origin: RectangleOrigin::TopLeft,
+        });
+    }
 }
 
 fn mouse_position(
