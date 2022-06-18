@@ -1,12 +1,14 @@
 use bevy::prelude::*;
 use bevy_egui::{egui, EguiContext};
+use bevy_prototype_lyon::draw::DrawMode;
 use crate::{MouseMovement, PrimitiveType, Selected, ShapeBase, Tool, ToolType};
 
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.add_system(ui_example)
-            .add_system(objects_list);
+            .add_system(objects_list)
+            .add_system(edit_style);
     }
 }
 fn ui_example(mut egui_context: ResMut<EguiContext>, mut current: ResMut<Tool>, mut mouse: ResMut<MouseMovement>) {
@@ -56,4 +58,10 @@ fn objects_list(mut commands: Commands, mut egui_context: ResMut<EguiContext>, q
            }});
        });
     });
-    }
+}
+
+fn edit_style(mut egui_context: ResMut<EguiContext>) {
+    egui::Window::new("Edit Style").show(egui_context.ctx_mut(), |ui| {
+
+    });
+}

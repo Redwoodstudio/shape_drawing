@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.7.0"
-leafwing-input-manager = "0.3"
 bevy_prototype_lyon = "0.5"
 bevy_egui = "0.13"
 bevy-web-resizer = "2.0.0"
 iyes_loopless = "0.5.1"
+bevy_mod_picking = "0.7"

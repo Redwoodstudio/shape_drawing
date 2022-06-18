@@ -8,16 +8,19 @@ use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
+use bevy_mod_picking::{DebugEventsPickingPlugin, DefaultPickingPlugins, PickableBundle, PickingCameraBundle, PickingEvent};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 
 fn main() {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPickingPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
         .add_plugin(UIPlugin)
         .add_startup_system(spawn_camera)
+        .add_system(select_event)
         .add_system(camera_zoom)
         .add_system(mouse_position)
         .add_system_set(
@@ -105,7 +108,7 @@ struct ShapeBase {
     originx: Vec3,
 }
 fn spawn_camera(mut commands: Commands) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    commands.spawn_bundle(OrthographicCameraBundle::new_2d()).insert_bundle(PickingCameraBundle::default());
 }
 fn primitive_handle_creation(
     mut commands: Commands,
@@ -155,6 +158,7 @@ fn primitive_handle_creation(
     if mouse_input.just_released(MouseButton::Left) {
         if let Ok(id) = query.get_single_mut() {
             commands.entity(id).remove::<Moving>();
+            commands.entity(id).insert_bundle(PickableBundle::default());
         }
     }
 }
@@ -207,6 +211,17 @@ fn custom_shape_handle_creation(
     }
 }
 
+fn select_event(mut events: EventReader<PickingEvent>, mut commands: Commands) {
+    for event in events.iter() {
+        match event {
+            PickingEvent::Selection(e) => {
+                info!("A selection event happened: {:?}", e);
+            },
+            _ => (),
+        }
+    }
+}
+
 fn custom_shape_handle_update(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
@@ -221,7 +236,7 @@ fn custom_shape_handle_update(
             if mouse.position.distance(moving.origin) <= 10.0 {
                 closed = true;
                 *draw_mode = DrawMode::Fill(FillMode::color(Color::CRIMSON));
-                commands.entity(entity).remove::<Moving>();
+                commands.entity(entity).remove::<Moving>().insert_bundle(PickableBundle::default());
             } else {
                 custom_shape.segments.push(Line(Point::new(
                     mouse.position.x - moving.origin.x,
