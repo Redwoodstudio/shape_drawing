@@ -1,10 +1,13 @@
+mod ui;
+
 use crate::tess::geom::euclid::Point2D;
 use crate::tess::geom::Point;
 use crate::tess::path::path::Builder;
+use crate::ui::UIPlugin;
 use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
-use bevy_egui::{egui, EguiContext, EguiPlugin};
+use bevy_egui::EguiPlugin;
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 
@@ -13,15 +16,22 @@ fn main() {
     app.add_plugins(DefaultPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
+        .add_plugin(UIPlugin)
         .add_startup_system(spawn_camera)
         .add_system(camera_zoom)
-        .add_system(ui_example)
         .add_system(mouse_position)
         .add_system_set(
             ConditionSet::new()
                 .run_if(should_handle_primitive)
                 .with_system(primitive_handle_creation)
                 .with_system(primitive_handle_update)
+                .into(),
+        )
+        .add_system_set(
+            ConditionSet::new()
+                .run_if(should_handle_custom_shape)
+                .with_system(custom_shape_handle_creation)
+                .with_system(custom_shape_handle_update)
                 .into(),
         )
         .insert_resource(ClearColor(Color::WHITE))
@@ -38,19 +48,24 @@ fn main() {
 struct MouseMovement {
     position: Vec2,
     normalized: Vec2,
+    over_ui: bool,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum ToolType {
     None,
-    Primitive,
+    Primitive(PrimitiveType),
     CustomShape,
 }
 
 struct Tool {
     tool: ToolType,
-    color: [f32; 4],
+    color: [u8; 4],
 }
+#[derive(Component)]
+struct Selected;
+
+#[derive(PartialEq, Copy, Clone, Debug)]
 enum PrimitiveType {
     Rectangle,
     Ellipse,
@@ -60,7 +75,7 @@ impl Default for Tool {
     fn default() -> Self {
         Self {
             tool: ToolType::None,
-            color: [0.0, 0.0, 0.0, 1.0],
+            color: [0, 0, 0, 255],
         }
     }
 }
@@ -72,32 +87,25 @@ impl Default for ToolType {
 }
 #[derive(Component)]
 struct Moving {
-    origin: Vec2
+    origin: Vec2,
 }
 #[derive(Component)]
 struct PrimitiveShape {
+    shape: PrimitiveType,
+}
+
+#[derive(Component)]
+struct CustomShape {
+    segments: Vec<ShapeSegment>,
+}
+
+#[derive(Component)]
+struct ShapeBase {
     name: Option<String>,
-    origin: Vec2,
+    originx: Vec3,
 }
 fn spawn_camera(mut commands: Commands) {
-    let shape = CustomShape {
-        segments: vec![
-            Line(Point::new(100.0, 0.0)),
-            QuadraticBezier {
-                ctrl: Point::new(0.0, 0.0),
-                to: Point::new(0.0, 100.0),
-            },
-            Line(Point::new(200.0, 100.0)),
-            Line(Point::new(200.0, 0.0)),
-        ],
-    };
-
     commands.spawn_bundle(OrthographicCameraBundle::new_2d());
-    commands.spawn_bundle(GeometryBuilder::build_as(
-        &shape,
-        DrawMode::Fill(FillMode::color(Color::CRIMSON)),
-        Transform::from_translation(Vec3::new(0.0, 0.0, 0.1)),
-    ));
 }
 fn primitive_handle_creation(
     mut commands: Commands,
@@ -106,46 +114,127 @@ fn primitive_handle_creation(
     mut query: Query<Entity, With<Moving>>,
     mouse: Res<MouseMovement>,
 ) {
-    if mouse_input.just_pressed(MouseButton::Left)  {
-        let shape = GeometryBuilder::build_as(
-            &shapes::Rectangle {
-                extents: Vec2::ZERO,
-                origin: RectangleOrigin::Center,
-            },
-            DrawMode::Fill(FillMode::color(Color::from(tool.color))),
-            Transform::from_translation(mouse.position.extend(0.1)),
-        );
+    if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
+        let color = Color::rgba_u8(tool.color[0], tool.color[1], tool.color[2], tool.color[3]);
+        let prim_type = match tool.tool {
+            ToolType::Primitive(t) => t,
+            _ => unreachable!(),
+        };
+        let shape = match prim_type {
+            PrimitiveType::Rectangle => GeometryBuilder::build_as(
+                &shapes::Rectangle {
+                    extents: Vec2::ZERO,
+                    origin: RectangleOrigin::Center,
+                },
+                DrawMode::Fill(FillMode::color(color)),
+                Transform::from_translation(mouse.position.extend(0.1)),
+            ),
+            PrimitiveType::Ellipse => GeometryBuilder::build_as(
+                &shapes::Ellipse {
+                    radii: Vec2::ZERO,
+                    center: Vec2::ZERO,
+                },
+                DrawMode::Fill(FillMode::color(color)),
+                Transform::from_translation(mouse.position.extend(0.1)),
+            ),
+            _ => unreachable!(),
+        };
+
         commands
             .spawn_bundle(shape)
             .insert(Moving {
-                origin: mouse.position
-            })
-            .insert(PrimitiveShape {
-                name: None,
                 origin: mouse.position,
-            });
+            })
+            .insert(ShapeBase {
+                name: None,
+                originx: Vec3::new(0.0, 0.0, 0.0),
+            })
+            .insert(PrimitiveShape { shape: prim_type });
     }
 
     if mouse_input.just_released(MouseButton::Left) {
         if let Ok(id) = query.get_single_mut() {
             commands.entity(id).remove::<Moving>();
-            //commands.entity(id).remove::<PrimitiveShape>();
         }
     }
 }
 
 fn primitive_handle_update(
     mouse: Res<MouseMovement>,
-    mut query: Query<(&mut Path, &Moving), With<PrimitiveShape>>,
+    mut query: Query<(&mut Path, &Moving, &PrimitiveShape)>,
 ) {
-    if let Ok((mut path, moving)) = query.get_single_mut() {
-        *path = ShapePath::build_as(&shapes::Rectangle {
-            extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
-            origin: RectangleOrigin::TopLeft,
-        });
+    if let Ok((mut path, moving, prim_type)) = query.get_single_mut() {
+        *path = match prim_type.shape {
+            PrimitiveType::Rectangle => ShapePath::build_as(&shapes::Rectangle {
+                extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
+                origin: RectangleOrigin::TopLeft,
+            }),
+            PrimitiveType::Ellipse => ShapePath::build_as(&shapes::Ellipse {
+                radii: (mouse.position - moving.origin) / 2.0,
+                center: (mouse.position - moving.origin) / 2.0,
+            }),
+            _ => unreachable!(),
+        };
     };
 }
 
+fn custom_shape_handle_creation(
+    mut commands: Commands,
+    mouse_input: Res<Input<MouseButton>>,
+    mouse: Res<MouseMovement>,
+    query: Query<&Moving>,
+) {
+    if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
+        if let Err(_) = query.get_single() {
+            commands
+                .spawn_bundle(GeometryBuilder::build_as(
+                    &CustomShapeRaw {
+                        segments: vec![],
+                        closed: false,
+                    },
+                    DrawMode::Stroke(StrokeMode::color(Color::CRIMSON)),
+                    Transform::from_translation(mouse.position.extend(0.0)),
+                ))
+                .insert(CustomShape { segments: vec![] })
+                .insert(ShapeBase {
+                    name: None,
+                    originx: Vec3::ZERO,
+                })
+                .insert(Moving {
+                    origin: mouse.position,
+                });
+        }
+    }
+}
+
+fn custom_shape_handle_update(
+    mut commands: Commands,
+    mouse_input: Res<Input<MouseButton>>,
+    mouse: Res<MouseMovement>,
+    mut query: Query<(&mut Path, &mut DrawMode, &mut CustomShape, &Moving, Entity)>,
+) {
+    if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
+        if let Ok((mut path, mut draw_mode, mut custom_shape, moving, entity)) =
+            query.get_single_mut()
+        {
+            let mut closed = false;
+            if mouse.position.distance(moving.origin) <= 10.0 {
+                closed = true;
+                *draw_mode = DrawMode::Fill(FillMode::color(Color::CRIMSON));
+                commands.entity(entity).remove::<Moving>();
+            } else {
+                custom_shape.segments.push(Line(Point::new(
+                    mouse.position.x - moving.origin.x,
+                    mouse.position.y - moving.origin.y,
+                )));
+            }
+            *path = ShapePath::build_as(&CustomShapeRaw {
+                segments: custom_shape.segments.clone(),
+                closed,
+            });
+        }
+    }
+}
 fn mouse_position(
     windows: Res<Windows>,
     mut mouse: ResMut<MouseMovement>,
@@ -195,78 +284,19 @@ fn camera_zoom(
     }
 }
 
-fn ui_example(mut egui_context: ResMut<EguiContext>, mut current: ResMut<Tool>) {
-    egui::Window::new("Hello").show(egui_context.ctx_mut(), |ui| {
-        ui.label("Choose drawing mode");
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut current.tool, ToolType::None, "None");
-            ui.selectable_value(&mut current.tool, ToolType::Primitive, "Primitive");
-            ui.selectable_value(&mut current.tool, ToolType::CustomShape, "Custom Shape");
-        });
-        ui.end_row();
-        ui.label("Choose shape color");
-        ui.color_edit_button_rgba_premultiplied(&mut current.color);
-        ui.end_row();
-    });
-}
-
-/*fn edit_shape(tool: &ToolType, mouse_position: Vec2, origin: Vec2) -> Path {
-    match tool {
-        &ToolType::None => {
-            unreachable!()
-        }
-        &ToolType::Rectangle => ShapePath::build_as(&shapes::Rectangle {
-            extents: (mouse_position - origin) * Vec2::new(1.0, -1.0),
-            origin: RectangleOrigin::TopLeft,
-        }),
-        &ToolType::Ellipse => ShapePath::build_as(&shapes::Ellipse {
-            radii: (mouse_position - origin) / 2.0,
-            center: (mouse_position - origin) / 2.0,
-        }),
-        &ToolType::CustomShape => ShapePath::build_as(&CustomShape {
-            segments: vec![],
-        }),
-    }
-}*/
-
-/*fn create_shape(tool: &ToolType, mouse_position: Vec2) -> ShapeBundle {
-    let builder = GeometryBuilder::new();
-    match tool {
-        &ToolType::None => {
-            unreachable!()
-        }
-        &ToolType::Rectangle => builder
-            .add(&shapes::Rectangle {
-                extents: Vec2::ZERO,
-                origin: RectangleOrigin::Center,
-            })
-            .build(
-                DrawMode::Fill(FillMode::color(Color::WHITE)),
-                Transform::from_translation(mouse_position.extend(0.0)),
-            ),
-        &ToolType::Ellipse => builder
-            .add(&shapes::Ellipse {
-                radii: Vec2::ZERO,
-                center: mouse_position,
-            })
-            .build(
-                DrawMode::Fill(FillMode::color(Color::WHITE)),
-                Transform::from_translation(mouse_position.extend(0.0)),
-            ),
-        &ToolType::CustomShape => builder
-            .add(&CustomShape {
-                segments: vec![],
-            }).build(DrawMode::Fill(FillMode::color(Color::WHITE)),
-                     Transform::from_translation(mouse_position.extend(0.0))),
-    }
-}*/
-
 fn should_handle_primitive(tool: Res<Tool>) -> bool {
-    return tool.tool == ToolType::Primitive;
+    return match tool.tool {
+        ToolType::Primitive(_) => true,
+        _ => false,
+    };
+}
+fn should_handle_custom_shape(tool: Res<Tool>) -> bool {
+    return tool.tool == ToolType::CustomShape;
 }
 #[derive(Debug, Clone, PartialEq)]
-struct CustomShape {
+struct CustomShapeRaw {
     pub segments: Vec<ShapeSegment>,
+    pub closed: bool,
 }
 
 #[allow(dead_code)]
@@ -284,9 +314,9 @@ enum ShapeSegment {
     },
 }
 
-impl Geometry for CustomShape {
+impl Geometry for CustomShapeRaw {
     fn add_geometry(&self, b: &mut Builder) {
-        b.begin(Point2D::new(100.0, 0.0));
+        b.begin(Point2D::new(0.0, 0.0));
         for segment in self.segments.iter() {
             match *segment {
                 Line(end) => b.line_to(end),
@@ -294,6 +324,6 @@ impl Geometry for CustomShape {
                 CubicBezier { ctrl, ctrl2, to } => b.cubic_bezier_to(ctrl, ctrl2, to),
             };
         }
-        b.close();
+        b.end(self.closed);
     }
 }
