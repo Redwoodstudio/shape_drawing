@@ -3,24 +3,27 @@ mod ui;
 use crate::tess::geom::euclid::Point2D;
 use crate::tess::geom::Point;
 use crate::tess::path::path::Builder;
-use crate::ui::UIPlugin;
+use crate::ui::{CustomPickingPlugins, UIPlugin};
 use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
-use bevy_mod_picking::{DebugEventsPickingPlugin, DefaultPickingPlugins, PickableBundle, PickingCameraBundle, PickingEvent};
+use bevy_mod_picking::{DefaultPickingPlugins, PickableBundle, PickingCameraBundle, PickingEvent, SelectionEvent};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
+use bevy::log::LogPlugin;
 
 fn main() {
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
-        .add_plugins(DefaultPickingPlugins)
+    app
+        //.add_plugins_with(DefaultPlugins, |plugins| plugins.disable::<bevy::log::LogPlugin>())
+        .add_plugins(DefaultPlugins)
+        .add_plugins(CustomPickingPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
         .add_plugin(UIPlugin)
         .add_startup_system(spawn_camera)
-        .add_system(select_event)
+        //.add_system(select_event)
         .add_system(camera_zoom)
         .add_system(mouse_position)
         .add_system_set(
@@ -45,6 +48,8 @@ fn main() {
         app.add_plugin(bevy_web_resizer::Plugin);
     }
     app.run();
+    //bevy_mod_debugdump::print_schedule(&mut app);
+
 }
 
 #[derive(Default)]
@@ -65,8 +70,6 @@ struct Tool {
     tool: ToolType,
     color: [u8; 4],
 }
-#[derive(Component)]
-struct Selected;
 
 #[derive(PartialEq, Copy, Clone, Debug)]
 enum PrimitiveType {
@@ -207,17 +210,6 @@ fn custom_shape_handle_creation(
                 .insert(Moving {
                     origin: mouse.position,
                 });
-        }
-    }
-}
-
-fn select_event(mut events: EventReader<PickingEvent>, mut commands: Commands) {
-    for event in events.iter() {
-        match event {
-            PickingEvent::Selection(e) => {
-                info!("A selection event happened: {:?}", e);
-            },
-            _ => (),
         }
     }
 }
