@@ -1,9 +1,9 @@
 mod ui;
-
+mod picking_helpers;
 use crate::tess::geom::euclid::Point2D;
 use crate::tess::geom::Point;
 use crate::tess::path::path::Builder;
-use crate::ui::{CustomPickingPlugins, UIPlugin};
+use crate::ui::UIPlugin;
 use crate::ShapeSegment::{CubicBezier, Line, QuadraticBezier};
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
@@ -12,6 +12,7 @@ use bevy_mod_picking::{DefaultPickingPlugins, PickableBundle, PickingCameraBundl
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 use bevy::log::LogPlugin;
+use crate::picking_helpers::CustomPickingPlugins;
 
 fn main() {
     let mut app = App::new();
@@ -189,9 +190,10 @@ fn custom_shape_handle_creation(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
     mouse: Res<MouseMovement>,
+    tool: Res<Tool>,
     query: Query<&Moving>,
 ) {
-    if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
+    if mouse_input.just_released(MouseButton::Left) && !mouse.over_ui {
         if let Err(_) = query.get_single() {
             commands
                 .spawn_bundle(GeometryBuilder::build_as(
@@ -199,10 +201,10 @@ fn custom_shape_handle_creation(
                         segments: vec![],
                         closed: false,
                     },
-                    DrawMode::Stroke(StrokeMode::color(Color::CRIMSON)),
+                    DrawMode::Stroke(StrokeMode::color(Color::rgba_u8(tool.color[0], tool.color[1], tool.color[2], tool.color[3]))),
                     Transform::from_translation(mouse.position.extend(0.0)),
                 ))
-                .insert(CustomShape { segments: vec![] })
+                .insert(CustomShape { segments: vec![Line(Point2D::zero())] })
                 .insert(ShapeBase {
                     name: None,
                     originx: Vec3::ZERO,
@@ -215,31 +217,62 @@ fn custom_shape_handle_creation(
 }
 
 fn custom_shape_handle_update(
+    mut orig: Local<Vec2>,
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
     mouse: Res<MouseMovement>,
     mut query: Query<(&mut Path, &mut DrawMode, &mut CustomShape, &Moving, Entity)>,
 ) {
-    if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
         if let Ok((mut path, mut draw_mode, mut custom_shape, moving, entity)) =
             query.get_single_mut()
         {
+            /*if custom_shape.segments.len() == 1 {
+                if mouse_input.just_released(MouseButton::Left) && !mouse.over_ui {
+                    custom_shape.segments.push(Line(point_from_positions(mouse.position, moving.origin)));
+                }
+                else {
+                    let last = custom_shape.segments.len()-1;
+                    custom_shape.segments[last] = Line(point_from_positions(mouse.position, moving.origin));
+                    *path = ShapePath::build_as(&CustomShapeRaw {
+                        segments: custom_shape.segments.clone(),
+                        closed: false,
+                    });
+                }
+                return;
+
+            }*/
+            if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui{
+                *orig = mouse.position;
+            }
+
+            if mouse_input.just_released(MouseButton::Left) && !mouse.over_ui {
             let mut closed = false;
-            if mouse.position.distance(moving.origin) <= 10.0 {
+            if orig.distance(moving.origin) <= 10.0 {
                 closed = true;
                 *draw_mode = DrawMode::Fill(FillMode::color(Color::CRIMSON));
                 commands.entity(entity).remove::<Moving>().insert_bundle(PickableBundle::default());
             } else {
-                custom_shape.segments.push(Line(Point::new(
-                    mouse.position.x - moving.origin.x,
-                    mouse.position.y - moving.origin.y,
-                )));
+                custom_shape.segments.push(Line(point_from_positions(mouse.position, moving.origin)));
             }
             *path = ShapePath::build_as(&CustomShapeRaw {
                 segments: custom_shape.segments.clone(),
                 closed,
             });
-        }
+        } else if !mouse_input.pressed(MouseButton::Left) {
+                let last = custom_shape.segments.len()-1;
+                custom_shape.segments[last] = Line(point_from_positions(mouse.position, moving.origin));
+                *path = ShapePath::build_as(&CustomShapeRaw {
+                    segments: custom_shape.segments.clone(),
+                    closed: false,
+                });
+            } else {
+                let last = custom_shape.segments.len()-1;
+                custom_shape.segments[last] = QuadraticBezier { ctrl: rotate_around_pivot(mouse.position, moving.origin, *orig), to: point_from_positions(*orig, moving.origin) };
+                *path = ShapePath::build_as(&CustomShapeRaw {
+                    segments: custom_shape.segments.clone(),
+                    closed: false,
+                });
+            }
     }
 }
 fn mouse_position(
@@ -333,4 +366,18 @@ impl Geometry for CustomShapeRaw {
         }
         b.end(self.closed);
     }
+}
+
+fn point_from_positions(mouse: Vec2, origin: Vec2) -> Point<f32> {
+     Point2D::new(
+        mouse.x - origin.x,
+        mouse.y - origin.y,
+    )
+}
+
+fn rotate_around_pivot(mouse: Vec2, origin: Vec2, pivot: Vec2) -> Point<f32> {
+    Point2D::new(
+        -mouse.x - origin.x + 2.0*pivot.x,
+        -mouse.y - origin.y + 2.0*pivot.y,
+    )
 }

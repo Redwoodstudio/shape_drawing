@@ -1,17 +1,9 @@
 use crate::{MouseMovement, PrimitiveType, ShapeBase, Tool, ToolType};
-use bevy::app::PluginGroupBuilder;
-use bevy::ecs::schedule::ShouldRun;
 use bevy::prelude::*;
-use bevy::ui::FocusPolicy;
 use bevy_egui::egui::Color32;
 use bevy_egui::{egui, EguiContext};
-use bevy_mod_picking::{
-    mesh_events_system, mesh_focus, mesh_selection, pause_for_picking_blockers, Hover,
-    PausedForBlockers, PickableMesh, PickingEvent, PickingPlugin,
-    PickingPluginsState, PickingSystem, Selection,
-};
+use bevy_mod_picking::Selection;
 use bevy_prototype_lyon::draw::{DrawMode, FillMode, StrokeMode};
-use bevy_prototype_lyon::draw::DrawMode::Outlined;
 
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
@@ -155,6 +147,22 @@ fn edit_style(
                     if edited {
                         return;
                     }
+                    let mut num = stroke_mode.options.line_width;
+                    let col = stroke_mode.color.as_rgba_f32();
+                    let mut color = Color32::from_rgba_premultiplied(
+                        (col[0] * 256.0) as u8,
+                        (col[1] * 256.0) as u8,
+                        (col[2] * 256.0) as u8,
+                        (col[3] * 256.0) as u8,
+                    );
+                    ui.add(egui::DragValue::new(&mut num));
+                    ui.color_edit_button_srgba(&mut color);
+                    *draw_mode = DrawMode::Stroke(StrokeMode::new(Color::rgba_u8(
+                        color.r(),
+                        color.g(),
+                        color.b(),
+                        color.a(),
+                    ), num));
                 },
                 DrawMode::Outlined{outline_mode, fill_mode} => {
                     let mut edited = false;
@@ -181,14 +189,29 @@ fn edit_style(
                         (col[2] * 256.0) as u8,
                         (col[3] * 256.0) as u8,
                     );
+                    let stroke_col = outline_mode.color.as_rgba_f32();
+                    let mut color2 = Color32::from_rgba_premultiplied(
+                        (stroke_col[0] * 256.0) as u8,
+                        (stroke_col[1] * 256.0) as u8,
+                        (stroke_col[2] * 256.0) as u8,
+                        (stroke_col[3] * 256.0) as u8,
+                    );
+                    let mut num = outline_mode.options.line_width;
                     ui.color_edit_button_srgba(&mut color);
+                    ui.add(egui::DragValue::new(&mut num));
+                    ui.color_edit_button_srgba(&mut color2);
                     *draw_mode = DrawMode::Outlined{fill_mode: FillMode::color(Color::rgba_u8(
                         color.r(),
                         color.g(),
                         color.b(),
                         color.a(),
                     )),
-                    outline_mode: StrokeMode::new(Color::BLACK, 5.0)};
+                    outline_mode: StrokeMode::new(Color::rgba_u8(
+                        color2.r(),
+                        color2.g(),
+                        color2.b(),
+                        color2.a(),
+                    ), num)};
                 },
             });
         }
@@ -196,87 +219,3 @@ fn edit_style(
     }
 }
 
-fn pause_for_egui(
-    mouse: Res<MouseMovement>,
-    mut paused: ResMut<PausedForBlockers>,
-    mut interaction: Query<
-        (
-            &mut Interaction,
-            Option<&mut Hover>,
-            Option<&FocusPolicy>,
-            Entity,
-        ),
-        With<PickableMesh>,
-    >,
-) {
-    if mouse.over_ui {
-        for (mut interaction, hover, _, _) in &mut interaction.iter_mut() {
-            if *interaction != Interaction::None {
-                *interaction = Interaction::None;
-            }
-
-            if let Some(mut hover) = hover {
-                if hover.hovered {
-                    hover.hovered = false;
-                }
-            }
-        }
-        paused.0 = true;
-        return;
-    }
-}
-
-pub struct CustomInteractablePickingPlugin;
-impl Plugin for CustomInteractablePickingPlugin {
-    fn build(&self, app: &mut App) {
-        app.init_resource::<PausedForBlockers>()
-            .add_event::<PickingEvent>()
-            .add_system_set_to_stage(
-                CoreStage::First,
-                SystemSet::new()
-                    .with_run_criteria(|state: Res<PickingPluginsState>| {
-                        simple_criteria(state.enable_interacting)
-                    })
-                    .with_system(
-                        pause_for_picking_blockers
-                            .label(PickingSystem::PauseForBlockers)
-                            .after(PickingSystem::UpdateIntersections),
-                    )
-                    .with_system(
-                        pause_for_egui
-                            .label(PickingSystem::PauseForEgui)
-                            .after(PickingSystem::PauseForBlockers),
-                    )
-                    .with_system(
-                        mesh_focus
-                            .label(PickingSystem::Focus)
-                            .after(PickingSystem::PauseForEgui),
-                    )
-                    .with_system(
-                        mesh_selection
-                            .label(PickingSystem::Selection)
-                            .after(PickingSystem::Focus),
-                    )
-                    .with_system(
-                        mesh_events_system
-                            .label(PickingSystem::Events)
-                            .after(PickingSystem::Selection),
-                    ),
-            );
-    }
-}
-
-pub struct CustomPickingPlugins;
-impl PluginGroup for CustomPickingPlugins {
-    fn build(&mut self, group: &mut PluginGroupBuilder) {
-        group.add(PickingPlugin);
-        group.add(CustomInteractablePickingPlugin);
-    }
-}
-fn simple_criteria(flag: bool) -> ShouldRun {
-    if flag {
-        ShouldRun::Yes
-    } else {
-        ShouldRun::No
-    }
-}

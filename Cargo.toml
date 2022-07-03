@@ -11,5 +11,5 @@ bevy_prototype_lyon = "0.5"
 bevy_egui = "0.14"
 bevy-web-resizer = "2.0.0"
 iyes_loopless = "0.6.0"
-bevy_mod_picking = {path = "../bevy_mod_picking"}
+bevy_mod_picking = {git = "https://github.com/Redwoodstudio/bevy_mod_picking"}
 bevy_mod_debugdump = "0.4.0"
