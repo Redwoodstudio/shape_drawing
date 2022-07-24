@@ -21,16 +21,12 @@ fn ui_example(
 ) {
     egui::Window::new("Tool Options").show(egui_context.ctx_mut(), |ui| {
         let mut prim_type = PrimitiveType::Rectangle;
-        match current.tool {
-            ToolType::Primitive(mut sh) => {
-                ui.horizontal(|ui| {
-                    ui.selectable_value(&mut sh, PrimitiveType::Rectangle, "Rectangle");
-                    ui.selectable_value(&mut sh, PrimitiveType::Ellipse, "Ellipse");
-                });
-                prim_type = sh;
-                current.tool = ToolType::Primitive(sh);
-            }
-            _ => (),
+        if let ToolType::Primitive(mut sh) = current.tool {
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut sh, PrimitiveType::Rectangle, "Rectangle");
+                ui.selectable_value(&mut sh, PrimitiveType::Ellipse, "Ellipse");
+            });
+            prim_type = sh;
         }
         ui.label("Choose drawing mode");
         ui.horizontal(|ui| {
@@ -71,6 +67,9 @@ fn objects_list(
         });
     });
     if let Some(e) = selected {
+        for (_, mut sel, _) in query.iter_mut() {
+            sel.set_selected(false);
+        }
         if let Ok(mut comp) = query.get_component_mut::<Selection>(e) {
             comp.set_selected(true);
         }
@@ -106,7 +105,10 @@ fn edit_style(
                             return;
                         }
                         if ui.selectable_label(false, "Outlined").clicked() {
-                            *draw_mode = DrawMode::Outlined{fill_mode, outline_mode: StrokeMode::new(Color::BLACK, 5.0)};
+                            *draw_mode = DrawMode::Outlined {
+                                fill_mode,
+                                outline_mode: StrokeMode::new(Color::BLACK, 5.0),
+                            };
                             edited = true;
                             return;
                         }
@@ -137,9 +139,12 @@ fn edit_style(
                             edited = true;
                             return;
                         }
-                        let _ =  ui.selectable_label(true, "Stroke");
+                        let _ = ui.selectable_label(true, "Stroke");
                         if ui.selectable_label(false, "Outlined").clicked() {
-                            *draw_mode = DrawMode::Outlined{fill_mode: FillMode::color(Color::BLACK), outline_mode: stroke_mode};
+                            *draw_mode = DrawMode::Outlined {
+                                fill_mode: FillMode::color(Color::BLACK),
+                                outline_mode: stroke_mode,
+                            };
                             edited = true;
                             return;
                         }
@@ -157,14 +162,15 @@ fn edit_style(
                     );
                     ui.add(egui::DragValue::new(&mut num));
                     ui.color_edit_button_srgba(&mut color);
-                    *draw_mode = DrawMode::Stroke(StrokeMode::new(Color::rgba_u8(
-                        color.r(),
-                        color.g(),
-                        color.b(),
-                        color.a(),
-                    ), num));
-                },
-                DrawMode::Outlined{outline_mode, fill_mode} => {
+                    *draw_mode = DrawMode::Stroke(StrokeMode::new(
+                        Color::rgba_u8(color.r(), color.g(), color.b(), color.a()),
+                        num,
+                    ));
+                }
+                DrawMode::Outlined {
+                    outline_mode,
+                    fill_mode,
+                } => {
                     let mut edited = false;
                     ui.horizontal(|ui| {
                         if ui.selectable_label(false, "Fill").clicked() {
@@ -177,7 +183,7 @@ fn edit_style(
                             edited = true;
                             return;
                         }
-                        let _ =  ui.selectable_label(true, "Outlined");
+                        let _ = ui.selectable_label(true, "Outlined");
                     });
                     if edited {
                         return;
@@ -200,22 +206,21 @@ fn edit_style(
                     ui.color_edit_button_srgba(&mut color);
                     ui.add(egui::DragValue::new(&mut num));
                     ui.color_edit_button_srgba(&mut color2);
-                    *draw_mode = DrawMode::Outlined{fill_mode: FillMode::color(Color::rgba_u8(
-                        color.r(),
-                        color.g(),
-                        color.b(),
-                        color.a(),
-                    )),
-                    outline_mode: StrokeMode::new(Color::rgba_u8(
-                        color2.r(),
-                        color2.g(),
-                        color2.b(),
-                        color2.a(),
-                    ), num)};
-                },
+                    *draw_mode = DrawMode::Outlined {
+                        fill_mode: FillMode::color(Color::rgba_u8(
+                            color.r(),
+                            color.g(),
+                            color.b(),
+                            color.a(),
+                        )),
+                        outline_mode: StrokeMode::new(
+                            Color::rgba_u8(color2.r(), color2.g(), color2.b(), color2.a()),
+                            num,
+                        ),
+                    };
+                }
             });
         }
         mouse.over_ui = egui_context.ctx_mut().wants_pointer_input();
     }
 }
-
