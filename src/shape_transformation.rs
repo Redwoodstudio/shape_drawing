@@ -1,7 +1,10 @@
+use crate::custom_shape::{CustomShape, CustomShapeRaw};
 use crate::picking_helpers::TransformScalePick;
-use crate::{MouseMovement, PrimitiveShape, ShapeBase};
+use crate::{MouseMovement, Moving, ShapeBase};
 use bevy::prelude::*;
+use bevy::sprite::Mesh2dHandle;
 use bevy_mod_picking::{PickingCamera, Selection};
+use bevy_prototype_lyon::prelude::{Path, ShapePath};
 
 pub struct ShapeTransformPlugin;
 
@@ -25,7 +28,8 @@ impl Plugin for ShapeTransformPlugin {
             .add_system(move_shape)
             .add_system(scale_shape)
             .add_system(update_focused_shape)
-            .add_system(debug_scale);
+            .add_system(debug_scale)
+            .add_system(update_origin);
     }
 }
 
@@ -70,6 +74,7 @@ struct Scaled {
     pos_pressed: Vec2,
     orig_scale: Vec3,
     orig_size: Vec2,
+    orig_translat: Vec3,
 }
 fn scale_shape(
     mut scaled: Local<Scaled>,
@@ -92,6 +97,7 @@ fn scale_shape(
                 scaled.orig_size = transform_pick.size;
                 if let Ok(transform) = query.get(scaled.e.unwrap()) {
                     scaled.orig_scale = transform.scale;
+                    scaled.orig_translat = transform.translation
                 }
             }
         }
@@ -104,7 +110,10 @@ fn scale_shape(
                     + scaled.orig_size)
                     / whole;
                 *transform = Transform {
-                    translation: transform.translation,
+                    translation: scaled.orig_translat
+                        + ((mouse.position - scaled.pos_pressed) * Vec2::from(scaled.factor).abs())
+                            .extend(0.0)
+                            / 2.0,
                     rotation: transform.rotation,
                     scale: scale.extend(1.0),
                 }
@@ -119,7 +128,8 @@ fn debug_scale(
 ) {
     if mouse_input.pressed(MouseButton::Right) {
         for mut transform in q.iter_mut() {
-            *transform = transform.with_scale(Vec3::new(1.5, 1.5, 1.0));
+            let (_, z) = transform.rotation.to_axis_angle();
+            *transform = transform.with_rotation(Quat::from_rotation_z(0.1 + z));
         }
     }
 }
@@ -130,5 +140,30 @@ fn update_focused_shape(query: Query<&PickingCamera>, mut over_entity: ResMut<Ov
             Some((e, _)) => over_entity.entity = Some(e),
             None => over_entity.entity = None,
         };
+    }
+}
+
+fn update_origin(
+    points: Res<Assets<Mesh>>,
+    mut query: Query<
+        (&mut CustomShape, &mut Path, &mut Transform, &Mesh2dHandle),
+        (Without<Moving>, Or<(Changed<Path>, Changed<Path>)>),
+    >,
+) {
+    for (mut custom_shape, mut path, mut transform, handle) in query.iter_mut() {
+        if let Some(mesh) = points.get(handle.0.clone()) {
+            if let Some(aabb) = mesh.compute_aabb() {
+                let old = custom_shape.origin;
+                custom_shape.origin = -(Vec3::from(aabb.center)).truncate() + old;
+                *path = ShapePath::build_as(&CustomShapeRaw {
+                    segments: custom_shape.segments.clone(),
+                    closed: true,
+                    origin: custom_shape.origin,
+                });
+                *transform = transform.with_translation(
+                    transform.translation - (custom_shape.origin - old).extend(0.0),
+                );
+            }
+        }
     }
 }

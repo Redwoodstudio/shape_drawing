@@ -1,4 +1,5 @@
 use crate::helpers::{point_from_positions, rotate_around_pivot};
+use crate::tess::geom::euclid::Size2D;
 use crate::ShapeSegment::*;
 use crate::{MouseMovement, Moving, ShapeBase, Tool};
 use bevy::prelude::*;
@@ -11,7 +12,8 @@ use bevy_prototype_lyon::prelude::{
 
 #[derive(Component)]
 pub struct CustomShape {
-    segments: Vec<ShapeSegment>,
+    pub segments: Vec<ShapeSegment>,
+    pub origin: Vec2,
 }
 
 pub fn custom_shape_handle_creation(
@@ -28,6 +30,7 @@ pub fn custom_shape_handle_creation(
                 &CustomShapeRaw {
                     segments: vec![],
                     closed: false,
+                    origin: Vec2::ZERO,
                 },
                 DrawMode::Stroke(StrokeMode::color(Color::rgba_u8(
                     tool.color[0],
@@ -39,6 +42,7 @@ pub fn custom_shape_handle_creation(
             ))
             .insert(CustomShape {
                 segments: vec![Line(Point::zero())],
+                origin: Vec2::ZERO,
             })
             .insert(ShapeBase {
                 name: None,
@@ -86,6 +90,7 @@ pub fn custom_shape_handle_update(
             *path = ShapePath::build_as(&CustomShapeRaw {
                 segments: custom_shape.segments.clone(),
                 closed,
+                origin: custom_shape.origin,
             });
         } else if !mouse_input.pressed(MouseButton::Left) {
             let last = custom_shape.segments.len() - 1;
@@ -93,6 +98,7 @@ pub fn custom_shape_handle_update(
             *path = ShapePath::build_as(&CustomShapeRaw {
                 segments: custom_shape.segments.clone(),
                 closed: false,
+                origin: custom_shape.origin,
             });
         } else {
             let last = custom_shape.segments.len() - 1;
@@ -103,6 +109,7 @@ pub fn custom_shape_handle_update(
             *path = ShapePath::build_as(&CustomShapeRaw {
                 segments: custom_shape.segments.clone(),
                 closed: false,
+                origin: custom_shape.origin,
             });
         }
     }
@@ -112,6 +119,7 @@ pub fn custom_shape_handle_update(
 pub struct CustomShapeRaw {
     pub segments: Vec<ShapeSegment>,
     pub closed: bool,
+    pub origin: Vec2,
 }
 
 #[allow(dead_code)]
@@ -131,12 +139,14 @@ pub enum ShapeSegment {
 
 impl Geometry for CustomShapeRaw {
     fn add_geometry(&self, b: &mut Builder) {
-        b.begin(Point::new(0.0, 0.0));
+        let v = Point::from((self.origin.x, self.origin.y));
+        let o = Size2D::from((self.origin.x, self.origin.y));
+        b.begin(v);
         for segment in self.segments.iter() {
             match *segment {
-                Line(end) => b.line_to(end),
-                QuadraticBezier { ctrl, to } => b.quadratic_bezier_to(ctrl, to),
-                CubicBezier { ctrl, ctrl2, to } => b.cubic_bezier_to(ctrl, ctrl2, to),
+                Line(end) => b.line_to(end + o),
+                QuadraticBezier { ctrl, to } => b.quadratic_bezier_to(ctrl + o, to + o),
+                CubicBezier { ctrl, ctrl2, to } => b.cubic_bezier_to(ctrl + o, ctrl2 + o, to + o),
             };
         }
         b.end(self.closed);

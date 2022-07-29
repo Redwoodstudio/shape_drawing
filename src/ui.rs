@@ -27,6 +27,7 @@ fn ui_example(
                 ui.selectable_value(&mut sh, PrimitiveType::Ellipse, "Ellipse");
             });
             prim_type = sh;
+            current.tool = ToolType::Primitive(sh);
         }
         ui.label("Choose drawing mode");
         ui.horizontal(|ui| {

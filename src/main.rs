@@ -27,7 +27,7 @@ fn main() {
         .add_plugin(WorldInspectorPlugin::new())
         .add_plugin(UIPlugin)
         .add_plugin(ShapeTransformPlugin)
-        .add_plugin(DebugEventsPickingPlugin)
+        //.add_plugin(DebugEventsPickingPlugin)
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_highlight_rectangle)
         //.add_system(select_event)
@@ -134,7 +134,7 @@ fn primitive_handle_creation(
             PrimitiveType::Rectangle => GeometryBuilder::build_as(
                 &shapes::Rectangle {
                     extents: Vec2::ZERO,
-                    origin: RectangleOrigin::TopLeft,
+                    origin: RectangleOrigin::Center,
                 },
                 DrawMode::Fill(FillMode::color(color)),
                 Transform::from_translation(mouse.position.extend(0.1)),
@@ -172,20 +172,24 @@ fn primitive_handle_creation(
 
 fn primitive_handle_update(
     mouse: Res<MouseMovement>,
-    mut query: Query<(&mut Path, &Moving, &PrimitiveShape)>,
+    mut query: Query<(&mut Path, &Moving, &mut Transform, &PrimitiveShape)>,
 ) {
-    if let Ok((mut path, moving, prim_type)) = query.get_single_mut() {
+    if let Ok((mut path, moving, mut transform, prim_type)) = query.get_single_mut() {
         *path = match prim_type.shape {
             PrimitiveType::Rectangle => ShapePath::build_as(&shapes::Rectangle {
-                extents: (mouse.position - moving.origin) * Vec2::new(1.0, -1.0),
-                origin: RectangleOrigin::TopLeft,
+                extents: (mouse.position - moving.origin) * Vec2::new(-1.0, -1.0),
+                origin: RectangleOrigin::Center,
             }),
             PrimitiveType::Ellipse => ShapePath::build_as(&shapes::Ellipse {
                 radii: (mouse.position - moving.origin) / 2.0,
-                center: (mouse.position - moving.origin) / 2.0,
+                center: Vec2::ZERO,
             }),
             _ => unreachable!(),
         };
+        *transform = transform.with_translation(
+            (moving.origin + (mouse.position - moving.origin) / 2.0)
+                .extend(transform.translation.z),
+        );
     };
 }
 
