@@ -103,15 +103,12 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
                         size: Vec2::ZERO,
                     })
                     .insert(Visibility { is_visible: false })
-                    /*
-                    .insert(RayCastMesh::<PickingRaycastSet>::default())
-                    .insert(Hover::default())
-                    .insert(Interaction::default())*/
                     .insert_bundle(PickableBundle::default())
                     .insert(NoDeselect);
             }
         });
 }
+
 fn highlight_selected(
     points: Res<Assets<Mesh>>,
     handles: Query<
@@ -176,6 +173,33 @@ fn highlight_selected(
     }
 }
 
+fn scale_pickers(
+    mut rect: Query<&mut DrawMode, (With<HighlightRect>, Without<TransformScalePick>)>,
+    mut pickers: Query<(&mut Path, &mut DrawMode), With<TransformScalePick>>,
+    cam: Query<&OrthographicProjection>,
+) {
+    if let Ok(cam_proj) = cam.get_single() {
+        for (mut picker, mut draw_mode) in pickers.iter_mut() {
+            *picker = ShapePath::build_as(&shapes::Rectangle {
+                extents: Vec2::new(15.0, 15.0) * cam_proj.scale,
+                origin: RectangleOrigin::Center,
+            });
+            *draw_mode = DrawMode::Outlined {
+                fill_mode: FillMode::color(Color::Rgba {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.0,
+                    alpha: 0.0,
+                }),
+                outline_mode: StrokeMode::new(Color::RED, cam_proj.scale * 2.0),
+            };
+        }
+        if let Ok(mut rect_draw) = rect.get_single_mut() {
+            *rect_draw = DrawMode::Stroke(StrokeMode::new(Color::RED, cam_proj.scale * 3.0));
+        }
+    }
+}
+
 pub struct CustomInteractablePickingPlugin;
 impl Plugin for CustomInteractablePickingPlugin {
     fn build(&self, app: &mut App) {
@@ -212,7 +236,8 @@ impl Plugin for CustomInteractablePickingPlugin {
                             .label(PickingSystem::Events)
                             .after(PickingSystem::Selection),
                     )
-                    .with_system(highlight_selected),
+                    .with_system(highlight_selected)
+                    .with_system(scale_pickers),
             );
     }
 }
