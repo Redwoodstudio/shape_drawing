@@ -10,12 +10,6 @@ use bevy_prototype_lyon::prelude::{
     DrawMode, FillMode, Geometry, GeometryBuilder, Path, ShapePath, StrokeMode,
 };
 
-#[derive(Component)]
-pub struct CustomShape {
-    pub segments: Vec<ShapeSegment>,
-    pub origin: Vec2,
-}
-
 pub fn custom_shape_handle_creation(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
@@ -40,8 +34,9 @@ pub fn custom_shape_handle_creation(
                 ))),
                 Transform::from_translation(mouse.position.extend(0.0)),
             ))
-            .insert(CustomShape {
+            .insert(CustomShapeRaw {
                 segments: vec![Line(Point::zero())],
+                closed: false,
                 origin: Vec2::ZERO,
             })
             .insert(ShapeBase {
@@ -59,7 +54,13 @@ pub fn custom_shape_handle_update(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
     mouse: Res<MouseMovement>,
-    mut query: Query<(&mut Path, &mut DrawMode, &mut CustomShape, &Moving, Entity)>,
+    mut query: Query<(
+        &mut Path,
+        &mut DrawMode,
+        &mut CustomShapeRaw,
+        &Moving,
+        Entity,
+    )>,
     tool: Res<Tool>,
 ) {
     if let Ok((mut path, mut draw_mode, mut custom_shape, moving, entity)) = query.get_single_mut()
@@ -106,16 +107,12 @@ pub fn custom_shape_handle_update(
                 ctrl: rotate_around_pivot(mouse.position, moving.origin, *orig),
                 to: point_from_positions(*orig, moving.origin),
             };
-            *path = ShapePath::build_as(&CustomShapeRaw {
-                segments: custom_shape.segments.clone(),
-                closed: false,
-                origin: custom_shape.origin,
-            });
+            *path = ShapePath::build_as(&custom_shape.clone());
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Component)]
 pub struct CustomShapeRaw {
     pub segments: Vec<ShapeSegment>,
     pub closed: bool,

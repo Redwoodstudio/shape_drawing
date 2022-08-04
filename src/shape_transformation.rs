@@ -1,4 +1,4 @@
-use crate::custom_shape::{CustomShape, CustomShapeRaw};
+use crate::custom_shape::CustomShapeRaw;
 use crate::picking_helpers::TransformScalePick;
 use crate::{MouseMovement, Moving, ShapeBase};
 use bevy::prelude::*;
@@ -28,8 +28,7 @@ impl Plugin for ShapeTransformPlugin {
             .add_system(move_shape)
             .add_system(scale_shape)
             .add_system(update_focused_shape)
-            .add_system(debug_scale)
-            .add_system(update_origin);
+            .add_system(debug_scale);
     }
 }
 
@@ -143,26 +142,39 @@ fn update_focused_shape(query: Query<&PickingCamera>, mut over_entity: ResMut<Ov
     }
 }
 
-fn update_origin(
+pub fn update_origin(
     points: Res<Assets<Mesh>>,
-    mut query: Query<
-        (&mut CustomShape, &mut Path, &mut Transform, &Mesh2dHandle),
-        (Without<Moving>, Or<(Changed<Path>, Changed<Path>)>),
-    >,
+    mut query: ParamSet<(
+        Query<
+            (
+                &mut CustomShapeRaw,
+                &mut Path,
+                &mut Transform,
+                &Mesh2dHandle,
+            ),
+            Without<Moving>,
+        >,
+        Query<Entity, Changed<Path>>,
+    )>,
+    removed_moving: RemovedComponents<Moving>,
 ) {
-    for (mut custom_shape, mut path, mut transform, handle) in query.iter_mut() {
-        if let Some(mesh) = points.get(handle.0.clone()) {
-            if let Some(aabb) = mesh.compute_aabb() {
-                let old = custom_shape.origin;
-                custom_shape.origin = -(Vec3::from(aabb.center)).truncate() + old;
-                *path = ShapePath::build_as(&CustomShapeRaw {
-                    segments: custom_shape.segments.clone(),
-                    closed: true,
-                    origin: custom_shape.origin,
-                });
-                *transform = transform.with_translation(
-                    transform.translation - (custom_shape.origin - old).extend(0.0),
-                );
+    let mut ents = query
+        .p1()
+        .iter()
+        .chain(removed_moving.iter())
+        .collect::<Vec<Entity>>();
+    ents.dedup();
+    for item in ents {
+        if let Ok((mut custom_shape, mut path, mut transform, handle)) = query.p0().get_mut(item) {
+            if let Some(mesh) = points.get(&handle.0.clone()) {
+                if let Some(aabb) = mesh.compute_aabb() {
+                    let old = custom_shape.origin;
+                    custom_shape.origin = -(Vec3::from(aabb.center)).truncate() + old;
+                    *path = ShapePath::build_as(&custom_shape.clone());
+                    *transform = transform.with_translation(
+                        transform.translation - (custom_shape.origin - old).extend(0.0),
+                    );
+                }
             }
         }
     }

@@ -116,7 +116,7 @@ fn highlight_selected(
         (Without<HighlightRect>, Without<TransformScalePick>),
     >,
     mut rect: Query<
-        (&mut Transform, &mut Path),
+        (&mut Transform, &mut Path, &DrawMode),
         (With<HighlightRect>, Without<TransformScalePick>),
     >,
     mut pickers: Query<
@@ -124,7 +124,7 @@ fn highlight_selected(
         Without<HighlightRect>,
     >,
 ) {
-    if let Ok((mut rect_transform, mut path)) = rect.get_single_mut() {
+    if let Ok((mut rect_transform, mut path, draw_mode)) = rect.get_single_mut() {
         if let Some((handle, transform, entity)) = handles
             .iter()
             .filter_map(|(n, x, y, e)| {
@@ -135,7 +135,7 @@ fn highlight_selected(
             })
             .next()
         {
-            if let Some(mesh) = points.get(handle.0.clone()) {
+            if let Some(mesh) = points.get(&handle.0.clone()) {
                 if let Some(aabb) = mesh.compute_aabb() {
                     *rect_transform = transform
                         .with_translation(
@@ -144,10 +144,16 @@ fn highlight_selected(
                                     * transform.scale,
                         )
                         .with_scale(Vec3::splat(1.0));
-                    *path = ShapePath::build_as(&shapes::Rectangle {
-                        extents: aabb.half_extents.truncate() * 2.0 * transform.scale.truncate(),
-                        origin: RectangleOrigin::Center,
-                    });
+
+                    if let DrawMode::Stroke(stroke) = draw_mode {
+                        *path = ShapePath::build_as(&shapes::Rectangle {
+                            extents: aabb.half_extents.truncate()
+                                * 2.0
+                                * transform.scale.truncate()
+                                + Vec2::splat(stroke.options.line_width),
+                            origin: RectangleOrigin::Center,
+                        });
+                    }
                     for (mut p_transform, mut p, mut visibility) in pickers.iter_mut() {
                         *p_transform = Transform::from_translation(Vec3::new(
                             p.location.0 * aabb.half_extents.x * transform.scale.x,

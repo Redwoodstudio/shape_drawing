@@ -1,4 +1,4 @@
-use crate::{MouseMovement, PrimitiveType, ShapeBase, Tool, ToolType};
+use crate::{MouseMovement, PrimitiveType, ShapeBase, Tool, ToolChanged, ToolType};
 use bevy::prelude::*;
 use bevy_egui::egui::Color32;
 use bevy_egui::{egui, EguiContext};
@@ -10,7 +10,8 @@ impl Plugin for UIPlugin {
     fn build(&self, app: &mut App) {
         app.add_system(ui_example.label("egui"))
             .add_system(objects_list.label("egui"))
-            .add_system(edit_style.label("egui"));
+            .add_system(edit_style.label("egui"))
+            .add_event::<ToolChanged>();
     }
 }
 
@@ -18,7 +19,9 @@ fn ui_example(
     mut egui_context: ResMut<EguiContext>,
     mut current: ResMut<Tool>,
     mut mouse: ResMut<MouseMovement>,
+    mut writer: EventWriter<ToolChanged>,
 ) {
+    let orig = current.tool.clone();
     egui::Window::new("Tool Options").show(egui_context.ctx_mut(), |ui| {
         let mut prim_type = PrimitiveType::Rectangle;
         if let ToolType::Primitive(mut sh) = current.tool {
@@ -45,6 +48,9 @@ fn ui_example(
         ui.end_row();
     });
     mouse.over_ui = egui_context.ctx_mut().wants_pointer_input();
+    if orig != current.tool {
+        writer.send(ToolChanged);
+    }
 }
 
 fn objects_list(

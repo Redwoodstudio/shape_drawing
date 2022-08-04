@@ -6,13 +6,15 @@ mod ui;
 
 use crate::custom_shape::{custom_shape_handle_creation, custom_shape_handle_update, ShapeSegment};
 use crate::picking_helpers::{spawn_highlight_rectangle, CustomPickingPlugins};
-use crate::shape_transformation::ShapeTransformPlugin;
+use crate::shape_transformation::{update_origin, ShapeTransformPlugin};
 use crate::ui::UIPlugin;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
-use bevy_inspector_egui::WorldInspectorPlugin;
-use bevy_mod_picking::{DebugEventsPickingPlugin, PickableBundle, PickingCameraBundle};
+//use bevy_inspector_egui::WorldInspectorPlugin;
+use crate::helpers::handle_tool_change;
+use crate::CoreStage::{Last, PostUpdate};
+use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 
@@ -24,7 +26,7 @@ fn main() {
         .add_plugins(CustomPickingPlugins)
         .add_plugin(ShapePlugin)
         .add_plugin(EguiPlugin)
-        .add_plugin(WorldInspectorPlugin::new())
+        //.add_plugin(WorldInspectorPlugin::new())
         .add_plugin(UIPlugin)
         .add_plugin(ShapeTransformPlugin)
         //.add_plugin(DebugEventsPickingPlugin)
@@ -47,9 +49,12 @@ fn main() {
                 .with_system(custom_shape_handle_update)
                 .into(),
         )
+        .add_system_to_stage(PostUpdate, handle_tool_change)
+        .add_system_to_stage(Last, update_origin)
         .insert_resource(ClearColor(Color::WHITE))
         .init_resource::<MouseMovement>()
         .init_resource::<Tool>();
+
     #[cfg(target_arch = "wasm32")]
     {
         app.add_plugin(bevy_web_resizer::Plugin);
@@ -65,7 +70,7 @@ pub struct MouseMovement {
     over_ui: bool,
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone)]
 enum ToolType {
     None,
     Primitive(PrimitiveType),
@@ -106,6 +111,8 @@ struct PrimitiveShape {
     shape: PrimitiveType,
 }
 
+pub struct ToolChanged;
+
 #[derive(Component)]
 pub struct ShapeBase {
     name: Option<String>,
@@ -113,7 +120,7 @@ pub struct ShapeBase {
 }
 fn spawn_camera(mut commands: Commands) {
     commands
-        .spawn_bundle(OrthographicCameraBundle::new_2d())
+        .spawn_bundle(Camera2dBundle::default())
         .insert_bundle(PickingCameraBundle::default());
 }
 
@@ -198,14 +205,15 @@ fn mouse_position(
     mut mouse: ResMut<MouseMovement>,
     camera: Query<(&Transform, &OrthographicProjection)>,
 ) {
-    let window = windows.get_primary().unwrap();
-    let window_size = Vec2::new(window.width(), window.height());
-    let (pos, cam) = camera.get_single().unwrap();
-    if let Some(cursor_position) = window.cursor_position() {
-        let mouse_normalized_screen_pos = (cursor_position / window_size) * 2. - Vec2::ONE;
-        mouse.position = pos.translation.truncate()
-            + mouse_normalized_screen_pos * Vec2::new(cam.right, cam.top) * cam.scale;
-        mouse.normalized = mouse_normalized_screen_pos;
+    if let Some(window) = windows.get_primary() {
+        let window_size = Vec2::new(window.width(), window.height());
+        let (pos, cam) = camera.single();
+        if let Some(cursor_position) = window.cursor_position() {
+            let mouse_normalized_screen_pos = (cursor_position / window_size) * 2. - Vec2::ONE;
+            mouse.position = pos.translation.truncate()
+                + mouse_normalized_screen_pos * Vec2::new(cam.right, cam.top) * cam.scale;
+            mouse.normalized = mouse_normalized_screen_pos;
+        }
     }
 }
 
