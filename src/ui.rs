@@ -4,6 +4,7 @@ use bevy_egui::egui::Color32;
 use bevy_egui::{egui, EguiContext};
 use bevy_mod_picking::Selection;
 use bevy_prototype_lyon::draw::{DrawMode, FillMode, StrokeMode};
+use std::cmp::Ordering;
 
 pub struct UIPlugin;
 impl Plugin for UIPlugin {
@@ -55,17 +56,26 @@ fn ui_example(
 
 fn objects_list(
     mut egui_context: ResMut<EguiContext>,
-    mut query: Query<(&ShapeBase, &mut Selection, Entity)>,
+    mut query: Query<(&ShapeBase, &mut Selection, Entity, &Transform)>,
     mut mouse: ResMut<MouseMovement>,
 ) {
     let mut selected = None;
     egui::Window::new("Objects").show(egui_context.ctx_mut(), |ui| {
         ui.vertical(|ui| {
-            let mut ents: Vec<(&ShapeBase, &Selection, Entity)> = query.iter().collect();
-            ents.sort_by(|a, b| b.2.cmp(&a.2));
-            ents.iter().for_each(|(_name, selection, e)| {
+            let mut ents: Vec<(&ShapeBase, &Selection, Entity, &Transform)> =
+                query.iter().collect();
+            ents.sort_by(|a, b| {
+                b.3.translation
+                    .z
+                    .partial_cmp(&a.3.translation.z)
+                    .unwrap_or(Ordering::Equal)
+            });
+            ents.iter().for_each(|(_name, selection, e, t)| {
                 if ui
-                    .selectable_label(selection.selected(), format!("{:?}", e))
+                    .selectable_label(
+                        selection.selected(),
+                        format!("{:?}: {}", e, t.translation.z),
+                    )
                     .clicked()
                 {
                     selected = Some(*e);
@@ -74,7 +84,7 @@ fn objects_list(
         });
     });
     if let Some(e) = selected {
-        for (_, mut sel, _) in query.iter_mut() {
+        for (_, mut sel, _, _) in query.iter_mut() {
             sel.set_selected(false);
         }
         if let Ok(mut comp) = query.get_component_mut::<Selection>(e) {

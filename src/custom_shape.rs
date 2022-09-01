@@ -1,7 +1,7 @@
 use crate::helpers::{point_from_positions, rotate_around_pivot};
 use crate::tess::geom::euclid::Size2D;
 use crate::ShapeSegment::*;
-use crate::{MouseMovement, Moving, ShapeBase, Tool};
+use crate::{MaxLayer, MouseMovement, Moving, ShapeBase, Tool};
 use bevy::prelude::*;
 use bevy_mod_picking::PickableBundle;
 use bevy_prototype_lyon::prelude::tess::math::Point;
@@ -15,6 +15,7 @@ pub fn custom_shape_handle_creation(
     mouse_input: Res<Input<MouseButton>>,
     mouse: Res<MouseMovement>,
     tool: Res<Tool>,
+    mut layer: ResMut<MaxLayer>,
     query: Query<&Moving>,
 ) {
     if mouse_input.just_released(MouseButton::Left) && !mouse.over_ui && query.get_single().is_err()
@@ -32,7 +33,7 @@ pub fn custom_shape_handle_creation(
                     tool.color[2],
                     tool.color[3],
                 ))),
-                Transform::from_translation(mouse.position.extend(0.0)),
+                Transform::from_translation(mouse.position.extend(0.1 * layer.0 as f32)),
             ))
             .insert(CustomShapeRaw {
                 segments: vec![Line(Point::zero())],
@@ -46,6 +47,7 @@ pub fn custom_shape_handle_creation(
             .insert(Moving {
                 origin: mouse.position,
             });
+        layer.0 += 1;
     }
 }
 

@@ -54,6 +54,12 @@ pub struct TransformScalePick {
     pub entity: Option<Entity>,
     pub size: Vec2,
 }
+
+#[derive(Component)]
+pub struct TransformRotationPick {
+    pub location: (f32, f32),
+    pub entity: Option<Entity>,
+}
 pub fn spawn_highlight_rectangle(mut commands: Commands) {
     let bundle = GeometryBuilder::build_as(
         &shapes::Rectangle {
@@ -93,7 +99,7 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
                         }),
                         outline_mode: StrokeMode::color(Color::RED),
                     },
-                    Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+                    Transform::from_translation(Vec3::new(0.0, 0.0, 100.0)),
                 );
                 parent
                     .spawn_bundle(b)
@@ -104,7 +110,32 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
                     })
                     .insert(Visibility { is_visible: false })
                     .insert_bundle(PickableBundle::default())
-                    .insert(NoDeselect);
+                    .insert(NoDeselect)
+                    .with_children(|p| {
+                        let b = GeometryBuilder::build_as(
+                            &shapes::Rectangle {
+                                extents: Vec2::new(20.0, 20.0),
+                                origin: RectangleOrigin::Center,
+                            },
+                            DrawMode::Outlined {
+                                fill_mode: FillMode::color(Color::Rgba {
+                                    red: 0.0,
+                                    green: 0.0,
+                                    blue: 0.0,
+                                    alpha: 0.0,
+                                }),
+                                outline_mode: StrokeMode::color(Color::RED),
+                            },
+                            Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
+                        );
+                        p.spawn_bundle(b)
+                            .insert(TransformRotationPick {
+                                location: x,
+                                entity: None,
+                            })
+                            .insert_bundle(PickableBundle::default())
+                            .insert(NoDeselect);
+                    });
             }
         });
 }
@@ -113,16 +144,27 @@ fn highlight_selected(
     points: Res<Assets<Mesh>>,
     handles: Query<
         (&Selection, &Mesh2dHandle, &Transform, Entity),
-        (Without<HighlightRect>, Without<TransformScalePick>),
+        (
+            Without<HighlightRect>,
+            (Without<TransformScalePick>, Without<TransformRotationPick>),
+        ),
     >,
     mut rect: Query<
         (&mut Transform, &mut Path, &DrawMode),
-        (With<HighlightRect>, Without<TransformScalePick>),
+        (
+            With<HighlightRect>,
+            (Without<TransformScalePick>, Without<TransformRotationPick>),
+        ),
     >,
     mut pickers: Query<
         (&mut Transform, &mut TransformScalePick, &mut Visibility),
-        Without<HighlightRect>,
+        (Without<HighlightRect>, Without<TransformRotationPick>),
     >,
+    mut rot_pickers: Query<
+        (&mut Transform, &mut TransformRotationPick),
+        (Without<HighlightRect>, Without<TransformScalePick>),
+    >,
+    cam: Query<&OrthographicProjection>,
 ) {
     if let Ok((mut rect_transform, mut path, draw_mode)) = rect.get_single_mut() {
         if let Some((handle, transform, entity)) = handles
@@ -141,7 +183,9 @@ fn highlight_selected(
                         .with_translation(
                             transform.translation
                                 + Vec3::from(transform.rotation.mul_vec3a(aabb.center))
-                                    * transform.scale,
+                                    * transform.scale
+                                    * Vec3::new(1.0, 1.0, 0.0)
+                                + Vec3::new(0.0, 0.0, 100.0),
                         )
                         .with_scale(Vec3::splat(1.0));
 
@@ -158,11 +202,21 @@ fn highlight_selected(
                         *p_transform = Transform::from_translation(Vec3::new(
                             p.location.0 * aabb.half_extents.x * transform.scale.x,
                             p.location.1 * aabb.half_extents.y * transform.scale.y,
-                            2.0,
+                            0.0,
                         ));
                         p.entity = Some(entity);
                         p.size = aabb.half_extents.truncate() * 2.0 * transform.scale.truncate();
                         visibility.is_visible = true;
+                    }
+                    if let Ok(cam) = cam.get_single() {
+                        for (mut p_transform, mut p) in rot_pickers.iter_mut() {
+                            *p_transform = Transform::from_translation(Vec3::new(
+                                p.location.0 * 3.125 * cam.scale,
+                                p.location.1 * 3.125 * cam.scale,
+                                -1.0,
+                            ));
+                            p.entity = Some(entity);
+                        }
                     }
                 }
             }
@@ -180,8 +234,22 @@ fn highlight_selected(
 }
 
 fn scale_pickers(
-    mut rect: Query<&mut DrawMode, (With<HighlightRect>, Without<TransformScalePick>)>,
-    mut pickers: Query<(&mut Path, &mut DrawMode), With<TransformScalePick>>,
+    mut rect: Query<
+        &mut DrawMode,
+        (
+            With<HighlightRect>,
+            Without<TransformScalePick>,
+            Without<TransformRotationPick>,
+        ),
+    >,
+    mut pickers: Query<
+        (&mut Path, &mut DrawMode),
+        (With<TransformScalePick>, Without<TransformRotationPick>),
+    >,
+    mut rot_pickers: Query<
+        (&mut Path, &mut DrawMode),
+        (Without<TransformScalePick>, With<TransformRotationPick>),
+    >,
     cam: Query<&OrthographicProjection>,
 ) {
     if let Ok(cam_proj) = cam.get_single() {
@@ -198,6 +266,21 @@ fn scale_pickers(
                     alpha: 0.0,
                 }),
                 outline_mode: StrokeMode::new(Color::RED, cam_proj.scale * 2.0),
+            };
+        }
+        for (mut picker, mut draw_mode) in rot_pickers.iter_mut() {
+            *picker = ShapePath::build_as(&shapes::Rectangle {
+                extents: Vec2::new(25.0, 25.0) * cam_proj.scale,
+                origin: RectangleOrigin::Center,
+            });
+            *draw_mode = DrawMode::Outlined {
+                fill_mode: FillMode::color(Color::Rgba {
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.0,
+                    alpha: 0.0,
+                }),
+                outline_mode: StrokeMode::new(Color::BLUE, cam_proj.scale * 2.0),
             };
         }
         if let Ok(mut rect_draw) = rect.get_single_mut() {
