@@ -1,4 +1,5 @@
 use std::ops::Neg;
+use bevy::math::Vec2Swizzles;
 use crate::custom_shape::CustomShapeRaw;
 use crate::picking_helpers::{TransformRotationPick, TransformScalePick};
 use crate::{MouseMovement, Moving, ShapeBase};
@@ -6,6 +7,8 @@ use bevy::prelude::*;
 use bevy::sprite::Mesh2dHandle;
 use bevy_mod_picking::{PickingCamera, Selection};
 use bevy_prototype_lyon::prelude::{Path, ShapePath};
+use std::f32::consts;
+use crate::helpers::one_vec;
 
 pub struct ShapeTransformPlugin;
 
@@ -84,27 +87,38 @@ struct Scaled {
     orig_scale: Vec3,
     orig_size: Vec2,
     orig_translat: Vec3,
+    global_picker: Vec3,
 }
 fn scale_shape(
     mut scaled: Local<Scaled>,
     mut query: Query<&mut Transform, (With<Selection>, With<ShapeBase>)>,
-    mut selector_query: Query<&TransformScalePick>,
+    mut selector_query: Query<(&TransformScalePick, &GlobalTransform)>,
     over_entity: Res<OverEntity>,
     mouse_input: Res<Input<MouseButton>>,
     mouse: Res<MouseMovement>,
 ) {
     if mouse_input.just_released(MouseButton::Left) {
+        info!("{:?}", scaled.orig_size);
+        info!("{:?}", scaled.orig_scale);
+        info!("{:?}", scaled.orig_translat);
+        if let Some(e) = scaled.e {
+            if let Ok(transform) = query.get(e) {
+                info!("{:?}", transform);
+            }
+        }
+
         scaled.e = None;
         return;
     }
     if mouse_input.just_pressed(MouseButton::Left) {
         if let Some(e) = over_entity.entity {
-            if let Ok(transform_pick) = selector_query.get_mut(e) {
+            if let Ok((transform_pick, pick_transform)) = selector_query.get_mut(e) {
                 scaled.e = transform_pick.entity;
                 scaled.factor = transform_pick.location;
                 scaled.orig_size = transform_pick.size;
+                scaled.global_picker = pick_transform.translation();
                 if let Ok(transform) = query.get(scaled.e.unwrap()) {
-                    scaled.pos_pressed = transform.rotation.neg().mul_vec3( mouse.position.extend(0.0)).truncate();
+                    scaled.pos_pressed = mouse.position;
                     scaled.orig_scale = transform.scale;
                     scaled.orig_translat = transform.translation
                 }
@@ -114,16 +128,34 @@ fn scale_shape(
     if mouse_input.pressed(MouseButton::Left) {
         if let Some(e) = scaled.e {
             if let Ok(mut transform) = query.get_mut(e) {
-                let rotated_position = transform.rotation.neg().mul_vec3( mouse.position.extend(0.0)).truncate();
+                let rotated_position = transform.rotation.neg().mul_vec3( (mouse.position - scaled.pos_pressed).extend(0.0)).truncate();
+                let rotated_position_other = transform.rotation.neg().mul_vec3( mouse.position.extend(0.0)) - transform.rotation.neg().mul_vec3( scaled.pos_pressed.extend(0.0));
+                let not_rotated_position = mouse.position - scaled.pos_pressed;
+                let h = transform.rotation.neg().mul_vec3(scaled.global_picker - transform.translation).truncate().round();
+                info!("{h}");
+                let helpful = one_vec(transform.rotation.neg().mul_vec3(scaled.global_picker - transform.translation).truncate().round());
+                info!("THIS SHOULD BE HELPFUL {}", helpful);
+                info!("Not Rot pos: {:?}", not_rotated_position);
+                info!("Rot pos: {:?}", rotated_position);
+                info!("Alt Rot pos: {:?}", rotated_position_other);
                 let whole = scaled.orig_size / scaled.orig_scale.truncate();
-                let scale = ((rotated_position - scaled.pos_pressed) * Vec2::from(scaled.factor)
-                    + scaled.orig_size)
-                    / whole;
+                info!("Original size: {:?}", whole);
+                //let fact = transform.rotation.mul_vec3(Vec2::from(scaled.factor).extend(0.0)).truncate();
+               //let fact = Vec2::from(scaled.factor) * Vec2::splat(-((transform.rotation.to_axis_angle().1 >= consts::FRAC_PI_2) as i32) as f32);
+                let fact = Vec2::from(scaled.factor);
+                let f = ((rotated_position) * helpful * 2.0
+                    + scaled.orig_size);
+                info!("Old size: {}", scaled.orig_size);
+                info!("Factor: {:?}", scaled.factor);
+                info!("New Size: {}", f);
+                let scale = f / whole;
+                info!("Scale: {}", scale);
                 *transform = Transform {
-                    translation: scaled.orig_translat
-                        + ((rotated_position - scaled.pos_pressed) * Vec2::from(scaled.factor).abs())
+                   /* translation: scaled.orig_translat
+                        + ((rotated_position) * Vec2::from(scaled.factor).abs())
                             .extend(0.0)
-                            / 2.0,
+                            / 2.0,*/
+                    translation: transform.translation,
                     rotation: transform.rotation,
                     scale: scale.extend(1.0),
                 }
@@ -174,10 +206,14 @@ fn debug_scale(
     mut q: Query<&mut Transform, With<ShapeBase>>,
     mouse_input: Res<Input<MouseButton>>,
 ) {
-    if mouse_input.pressed(MouseButton::Right) {
+    if mouse_input.just_pressed(MouseButton::Right) {
         for mut transform in q.iter_mut() {
-            let (_, z) = transform.rotation.to_axis_angle();
-            *transform = transform.with_rotation(Quat::from_rotation_z(0.1 + z));
+            let (_, mut z) = transform.rotation.to_axis_angle();
+            info!("{}", z);
+            /*if z == 0.0 {
+                z += std::f32::consts::PI;
+            }*/
+            *transform = transform.with_rotation(Quat::from_rotation_z( z + std::f32::consts::FRAC_PI_4 ));
         }
     }
 }

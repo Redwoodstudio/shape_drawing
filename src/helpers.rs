@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use crate::KeyCode::{Delete, Escape, PageDown, PageUp};
 use crate::{Moving, ToolChanged};
 use bevy::input::keyboard::KeyboardInput;
@@ -14,6 +15,20 @@ pub fn rotate_around_pivot(mouse: Vec2, origin: Vec2, pivot: Vec2) -> Point {
         -mouse.x - origin.x + 2.0 * pivot.x,
         -mouse.y - origin.y + 2.0 * pivot.y,
     )
+}
+
+pub fn one_vec(vec: Vec2) -> Vec2 {
+    let x = match vec.x.partial_cmp(&0.0).unwrap_or(Ordering::Equal) {
+        Ordering::Equal => 0.0,
+        Ordering::Greater => 1.0,
+        Ordering::Less => -1.0,
+    };
+    let y = match vec.y.partial_cmp(&0.0).unwrap_or(Ordering::Equal) {
+        Ordering::Equal => 0.0,
+        Ordering::Greater => 1.0,
+        Ordering::Less => -1.0,
+    };
+    Vec2::new(x, y)
 }
 
 pub fn handle_tool_change(
