@@ -1,7 +1,5 @@
-use std::cmp::Ordering;
 use crate::KeyCode::{Delete, Escape, PageDown, PageUp};
 use crate::{Moving, ToolChanged};
-use bevy::input::keyboard::KeyboardInput;
 use bevy::prelude::*;
 use bevy_mod_picking::{PickableBundle, Selection};
 use bevy_prototype_lyon::prelude::tess::math::Point;
@@ -15,20 +13,6 @@ pub fn rotate_around_pivot(mouse: Vec2, origin: Vec2, pivot: Vec2) -> Point {
         -mouse.x - origin.x + 2.0 * pivot.x,
         -mouse.y - origin.y + 2.0 * pivot.y,
     )
-}
-
-pub fn one_vec(vec: Vec2) -> Vec2 {
-    let x = match vec.x.partial_cmp(&0.0).unwrap_or(Ordering::Equal) {
-        Ordering::Equal => 0.0,
-        Ordering::Greater => 1.0,
-        Ordering::Less => -1.0,
-    };
-    let y = match vec.y.partial_cmp(&0.0).unwrap_or(Ordering::Equal) {
-        Ordering::Equal => 0.0,
-        Ordering::Greater => 1.0,
-        Ordering::Less => -1.0,
-    };
-    Vec2::new(x, y)
 }
 
 pub fn handle_tool_change(
@@ -85,4 +69,16 @@ pub fn handle_layer_change(
                 .with_translation(transform.translation + Vec3::new(0.0, 0.0, 0.1 * factor as f32));
         }
     }
+}
+
+pub fn global_vec_to_local(vec: Vec2, rotation: f32) -> Vec2 {
+    let len = vec.length();
+    let angle = Vec2::new(1.0, 0.0).angle_between(vec);
+    let local_angle = angle - rotation;
+    let y = local_angle.sin() * len;
+    let x = local_angle.cos() * len;
+    if !y.is_finite() || !x.is_finite() {
+        return Vec2::ZERO;
+    }
+    Vec2::new(x, y)
 }

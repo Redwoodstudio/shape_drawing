@@ -1,14 +1,10 @@
-use std::ops::Neg;
-use bevy::math::Vec2Swizzles;
 use crate::custom_shape::CustomShapeRaw;
 use crate::picking_helpers::{TransformRotationPick, TransformScalePick};
-use crate::{MouseMovement, Moving, ShapeBase};
+use crate::{global_vec_to_local, MouseMovement, Moving, ShapeBase};
 use bevy::prelude::*;
 use bevy::sprite::Mesh2dHandle;
 use bevy_mod_picking::{PickingCamera, Selection};
 use bevy_prototype_lyon::prelude::{Path, ShapePath};
-use std::f32::consts;
-use crate::helpers::one_vec;
 
 pub struct ShapeTransformPlugin;
 
@@ -98,15 +94,6 @@ fn scale_shape(
     mouse: Res<MouseMovement>,
 ) {
     if mouse_input.just_released(MouseButton::Left) {
-        info!("{:?}", scaled.orig_size);
-        info!("{:?}", scaled.orig_scale);
-        info!("{:?}", scaled.orig_translat);
-        if let Some(e) = scaled.e {
-            if let Ok(transform) = query.get(e) {
-                info!("{:?}", transform);
-            }
-        }
-
         scaled.e = None;
         return;
     }
@@ -128,34 +115,19 @@ fn scale_shape(
     if mouse_input.pressed(MouseButton::Left) {
         if let Some(e) = scaled.e {
             if let Ok(mut transform) = query.get_mut(e) {
-                let rotated_position = transform.rotation.neg().mul_vec3( (mouse.position - scaled.pos_pressed).extend(0.0)).truncate();
-                let rotated_position_other = transform.rotation.neg().mul_vec3( mouse.position.extend(0.0)) - transform.rotation.neg().mul_vec3( scaled.pos_pressed.extend(0.0));
                 let not_rotated_position = mouse.position - scaled.pos_pressed;
-                let h = transform.rotation.neg().mul_vec3(scaled.global_picker - transform.translation).truncate().round();
-                info!("{h}");
-                let helpful = one_vec(transform.rotation.neg().mul_vec3(scaled.global_picker - transform.translation).truncate().round());
-                info!("THIS SHOULD BE HELPFUL {}", helpful);
-                info!("Not Rot pos: {:?}", not_rotated_position);
-                info!("Rot pos: {:?}", rotated_position);
-                info!("Alt Rot pos: {:?}", rotated_position_other);
                 let whole = scaled.orig_size / scaled.orig_scale.truncate();
-                info!("Original size: {:?}", whole);
-                //let fact = transform.rotation.mul_vec3(Vec2::from(scaled.factor).extend(0.0)).truncate();
-               //let fact = Vec2::from(scaled.factor) * Vec2::splat(-((transform.rotation.to_axis_angle().1 >= consts::FRAC_PI_2) as i32) as f32);
+                let local_position =
+                    global_vec_to_local(not_rotated_position, transform.rotation.to_axis_angle().1);
                 let fact = Vec2::from(scaled.factor);
-                let f = ((rotated_position) * helpful * 2.0
-                    + scaled.orig_size);
-                info!("Old size: {}", scaled.orig_size);
-                info!("Factor: {:?}", scaled.factor);
-                info!("New Size: {}", f);
+                let f = local_position * fact + scaled.orig_size;
                 let scale = f / whole;
-                info!("Scale: {}", scale);
+                let offset = global_vec_to_local(
+                    local_position * fact.abs(),
+                    -transform.rotation.to_axis_angle().1,
+                );
                 *transform = Transform {
-                   /* translation: scaled.orig_translat
-                        + ((rotated_position) * Vec2::from(scaled.factor).abs())
-                            .extend(0.0)
-                            / 2.0,*/
-                    translation: transform.translation,
+                    translation: scaled.orig_translat + offset.extend(0.0) / 2.0,
                     rotation: transform.rotation,
                     scale: scale.extend(1.0),
                 }
@@ -184,7 +156,8 @@ fn rotate_shape(
                 rotated.pos_pressed = mouse.position;
                 if let Some(ent) = rotated.e {
                     if let Ok(transform) = transformable_objects.get(ent) {
-                        rotated.base_rotation = transform.rotation.to_axis_angle().1;
+                        let r = transform.rotation.to_axis_angle();
+                        rotated.base_rotation = r.0.z * r.1;
                     }
                 }
             }
@@ -208,12 +181,10 @@ fn debug_scale(
 ) {
     if mouse_input.just_pressed(MouseButton::Right) {
         for mut transform in q.iter_mut() {
-            let (_, mut z) = transform.rotation.to_axis_angle();
-            info!("{}", z);
-            /*if z == 0.0 {
-                z += std::f32::consts::PI;
-            }*/
-            *transform = transform.with_rotation(Quat::from_rotation_z( z + std::f32::consts::FRAC_PI_4 ));
+            let (_, z) = transform.rotation.to_axis_angle();
+
+            *transform =
+                transform.with_rotation(Quat::from_rotation_z(z + std::f32::consts::FRAC_PI_4));
         }
     }
 }

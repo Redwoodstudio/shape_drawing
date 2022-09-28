@@ -12,9 +12,11 @@ use bevy::input::mouse::{MouseMotion, MouseWheel};
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 //use bevy_inspector_egui::WorldInspectorPlugin;
-use crate::helpers::{handle_keyboard_input, handle_layer_change, handle_tool_change};
+use crate::helpers::{
+    global_vec_to_local, handle_keyboard_input, handle_layer_change, handle_tool_change,
+};
 use crate::CoreStage::{Last, PostUpdate};
-use bevy_mod_picking::{DebugEventsPickingPlugin, PickableBundle, PickingCameraBundle};
+use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
 
@@ -29,7 +31,7 @@ fn main() {
         //.add_plugin(WorldInspectorPlugin::new())
         .add_plugin(UIPlugin)
         .add_plugin(ShapeTransformPlugin)
-        .add_plugin(DebugEventsPickingPlugin)
+        //.add_plugin(DebugEventsPickingPlugin)
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_highlight_rectangle)
         //.add_system(select_event)
