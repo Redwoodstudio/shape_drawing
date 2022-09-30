@@ -117,15 +117,13 @@ fn scale_shape(
             if let Ok(mut transform) = query.get_mut(e) {
                 let not_rotated_position = mouse.position - scaled.pos_pressed;
                 let whole = scaled.orig_size / scaled.orig_scale.truncate();
-                let local_position =
-                    global_vec_to_local(not_rotated_position, transform.rotation.to_axis_angle().1);
+                let r = transform.rotation.to_axis_angle();
+                let rotation = r.0.z * r.1;
+                let local_position = global_vec_to_local(not_rotated_position, rotation);
                 let fact = Vec2::from(scaled.factor);
                 let f = local_position * fact + scaled.orig_size;
                 let scale = f / whole;
-                let offset = global_vec_to_local(
-                    local_position * fact.abs(),
-                    -transform.rotation.to_axis_angle().1,
-                );
+                let offset = global_vec_to_local(local_position * fact.abs(), -rotation);
                 *transform = Transform {
                     translation: scaled.orig_translat + offset.extend(0.0) / 2.0,
                     rotation: transform.rotation,
