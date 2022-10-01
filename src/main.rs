@@ -1,5 +1,6 @@
 mod custom_shape;
 mod helpers;
+mod overlap_order;
 mod picking_helpers;
 mod shape_transformation;
 mod ui;
@@ -15,6 +16,7 @@ use bevy_egui::EguiPlugin;
 use crate::helpers::{
     global_vec_to_local, handle_keyboard_input, handle_layer_change, handle_tool_change,
 };
+use crate::overlap_order::{apply_overlap_order, calculate_overlap_order};
 use crate::CoreStage::{Last, PostUpdate};
 use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 use bevy_prototype_lyon::prelude::*;
@@ -54,10 +56,13 @@ fn main() {
         .add_system(handle_keyboard_input)
         .add_system(handle_layer_change)
         .add_system_to_stage(PostUpdate, handle_tool_change)
+        .add_system_to_stage(PostUpdate, calculate_overlap_order)
+        .add_system_to_stage(Last, apply_overlap_order)
         .add_system_to_stage(Last, update_origin)
         .insert_resource(ClearColor(Color::WHITE))
+        .add_event::<ChangedOrderEvent>()
         .init_resource::<MouseMovement>()
-        .init_resource::<MaxLayer>()
+        .init_resource::<OrderedShapes>()
         .init_resource::<Tool>();
 
     #[cfg(target_arch = "wasm32")]
@@ -69,8 +74,13 @@ fn main() {
 }
 
 #[derive(Default)]
-pub struct MaxLayer(u32);
+pub struct OrderedShapes(Vec<Entity>);
 
+pub struct ChangedOrderEvent {
+    pub entity: Entity,
+    pub change_up: bool,
+    pub removed: bool,
+}
 #[derive(Default)]
 pub struct MouseMovement {
     position: Vec2,
@@ -90,7 +100,7 @@ pub struct Tool {
     color: [u8; 4],
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum PrimitiveType {
     Rectangle,
     Ellipse,
@@ -138,7 +148,6 @@ fn primitive_handle_creation(
     mouse_input: Res<Input<MouseButton>>,
     mut query: Query<Entity, With<Moving>>,
     mouse: Res<MouseMovement>,
-    mut layer: ResMut<MaxLayer>,
 ) {
     if mouse_input.just_pressed(MouseButton::Left) && !mouse.over_ui {
         let color = Color::rgba_u8(tool.color[0], tool.color[1], tool.color[2], tool.color[3]);
@@ -153,7 +162,7 @@ fn primitive_handle_creation(
                     origin: RectangleOrigin::Center,
                 },
                 DrawMode::Fill(FillMode::color(color)),
-                Transform::from_translation(mouse.position.extend(0.1 * layer.0 as f32)),
+                Transform::from_translation(mouse.position.extend(0.1)),
             ),
             PrimitiveType::Ellipse => GeometryBuilder::build_as(
                 &shapes::Ellipse {
@@ -161,11 +170,10 @@ fn primitive_handle_creation(
                     center: Vec2::ZERO,
                 },
                 DrawMode::Fill(FillMode::color(color)),
-                Transform::from_translation(mouse.position.extend(0.1 * layer.0 as f32)),
+                Transform::from_translation(mouse.position.extend(0.1)),
             ),
             _ => unreachable!(),
         };
-        layer.0 += 1;
 
         commands
             .spawn_bundle(shape)

@@ -1,5 +1,5 @@
 use crate::KeyCode::{Delete, Escape, PageDown, PageUp};
-use crate::{Moving, ToolChanged};
+use crate::{ChangedOrderEvent, Moving, ToolChanged};
 use bevy::prelude::*;
 use bevy_mod_picking::{PickableBundle, Selection};
 use bevy_prototype_lyon::prelude::tess::math::Point;
@@ -35,6 +35,7 @@ pub fn handle_keyboard_input(
     input: Res<Input<KeyCode>>,
     removal_query: Query<(Entity, &Selection)>,
     cancel_query: Query<Entity, With<Moving>>,
+    mut changed: EventWriter<ChangedOrderEvent>,
 ) {
     if input.just_pressed(Delete) {
         for e in removal_query.iter().filter_map(|(e, n)| {
@@ -43,6 +44,11 @@ pub fn handle_keyboard_input(
             }
             None
         }) {
+            changed.send(ChangedOrderEvent {
+                entity: e,
+                change_up: false,
+                removed: true,
+            });
             commands.entity(e).despawn();
         }
     }
@@ -55,18 +61,21 @@ pub fn handle_keyboard_input(
 
 pub fn handle_layer_change(
     input: Res<Input<KeyCode>>,
-    mut layer_query: Query<(&Selection, &mut Transform)>,
+    layer_query: Query<(&Selection, Entity)>,
+    mut changed: EventWriter<ChangedOrderEvent>,
 ) {
     let factor = input.just_pressed(PageUp) as i8 - input.just_pressed(PageDown) as i8;
     if factor != 0 {
-        for mut transform in layer_query.iter_mut().filter_map(|(n, t)| {
-            if n.selected() {
-                return Some(t);
-            }
-            None
-        }) {
-            *transform = transform
-                .with_translation(transform.translation + Vec3::new(0.0, 0.0, 0.1 * factor as f32));
+        if let Some(e) = layer_query
+            .iter()
+            .filter_map(|(s, e)| if s.selected() { Some(e) } else { None })
+            .next()
+        {
+            changed.send(ChangedOrderEvent {
+                entity: e,
+                change_up: factor == 1,
+                removed: false,
+            })
         }
     }
 }
