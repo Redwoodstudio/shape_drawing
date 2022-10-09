@@ -4,6 +4,7 @@ mod overlap_order;
 mod picking_helpers;
 mod shape_transformation;
 mod ui;
+mod keyboard_input;
 
 use crate::custom_shape::{custom_shape_handle_creation, custom_shape_handle_update, ShapeSegment};
 use crate::picking_helpers::{spawn_highlight_rectangle, CustomPickingPlugins};
@@ -14,13 +15,14 @@ use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 //use bevy_inspector_egui::WorldInspectorPlugin;
 use crate::helpers::{
-    global_vec_to_local, handle_keyboard_input, handle_layer_change, handle_tool_change,
+    global_vec_to_local, handle_tool_change,
 };
 use crate::overlap_order::{apply_overlap_order, calculate_overlap_order};
 use crate::CoreStage::{Last, PostUpdate};
 use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
+use crate::keyboard_input::KeyboardInputPlugin;
 
 fn main() {
     let mut app = App::new();
@@ -32,6 +34,7 @@ fn main() {
         .add_plugin(EguiPlugin)
         //.add_plugin(WorldInspectorPlugin::new())
         .add_plugin(UIPlugin)
+        .add_plugin(KeyboardInputPlugin)
         .add_plugin(ShapeTransformPlugin)
         //.add_plugin(DebugEventsPickingPlugin)
         .add_startup_system(spawn_camera)
@@ -53,8 +56,6 @@ fn main() {
                 .with_system(custom_shape_handle_update)
                 .into(),
         )
-        .add_system(handle_keyboard_input)
-        .add_system(handle_layer_change)
         .add_system_to_stage(PostUpdate, handle_tool_change)
         .add_system_to_stage(PostUpdate, calculate_overlap_order)
         .add_system_to_stage(Last, apply_overlap_order)

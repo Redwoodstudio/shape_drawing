@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use crate::helpers::{point_from_positions, rotate_around_pivot};
 use crate::tess::geom::euclid::Size2D;
 use crate::ShapeSegment::*;
@@ -9,7 +10,20 @@ use bevy_prototype_lyon::prelude::tess::path::path::Builder;
 use bevy_prototype_lyon::prelude::{
     DrawMode, FillMode, Geometry, GeometryBuilder, Path, ShapePath, StrokeMode,
 };
+use euclid::Point2D;
+use serde::{Deserialize, Serialize};
+use crate::tess::geom::euclid;
 
+
+#[repr(C)]
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "Point2D")]
+pub struct SerializedPoint2D<T, U> {
+    pub x: T,
+    pub y: T,
+    #[doc(hidden)]
+    pub _unit: PhantomData<U>,
+}
 pub fn custom_shape_handle_creation(
     mut commands: Commands,
     mouse_input: Res<Input<MouseButton>>,
@@ -120,16 +134,22 @@ pub struct CustomShapeRaw {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ShapeSegment {
+    #[serde(with = "SerializedPoint2D")]
     Line(Point),
     QuadraticBezier {
+        #[serde(with = "SerializedPoint2D")]
         ctrl: Point,
+        #[serde(with = "SerializedPoint2D")]
         to: Point,
     },
     CubicBezier {
+        #[serde(with = "SerializedPoint2D")]
         ctrl: Point,
+        #[serde(with = "SerializedPoint2D")]
         ctrl2: Point,
+        #[serde(with = "SerializedPoint2D")]
         to: Point,
     },
 }
