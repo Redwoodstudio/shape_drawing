@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
 use crate::helpers::{point_from_positions, rotate_around_pivot};
+use crate::tess::geom::euclid;
 use crate::tess::geom::euclid::Size2D;
 use crate::ShapeSegment::*;
 use crate::{MouseMovement, Moving, ShapeBase, Tool};
@@ -12,8 +12,7 @@ use bevy_prototype_lyon::prelude::{
 };
 use euclid::Point2D;
 use serde::{Deserialize, Serialize};
-use crate::tess::geom::euclid;
-
+use std::marker::PhantomData;
 
 #[repr(C)]
 #[derive(Serialize, Deserialize)]
@@ -34,7 +33,7 @@ pub fn custom_shape_handle_creation(
     if mouse_input.just_released(MouseButton::Left) && !mouse.over_ui && query.get_single().is_err()
     {
         commands
-            .spawn_bundle(GeometryBuilder::build_as(
+            .spawn(GeometryBuilder::build_as(
                 &CustomShapeRaw {
                     segments: vec![],
                     closed: false,
@@ -48,18 +47,17 @@ pub fn custom_shape_handle_creation(
                 ))),
                 Transform::from_translation(mouse.position.extend(0.0)),
             ))
-            .insert(CustomShapeRaw {
+            .insert((CustomShapeRaw {
                 segments: vec![Line(Point::zero())],
                 closed: false,
                 origin: Vec2::ZERO,
-            })
-            .insert(ShapeBase {
+            },ShapeBase {
                 name: None,
                 originx: Vec3::ZERO,
-            })
-            .insert(Moving {
+            }
+           , Moving {
                 origin: mouse.position,
-            });
+            }));
     }
 }
 
@@ -96,7 +94,7 @@ pub fn custom_shape_handle_update(
                 commands
                     .entity(entity)
                     .remove::<Moving>()
-                    .insert_bundle(PickableBundle::default());
+                    .insert(PickableBundle::default());
             } else {
                 custom_shape
                     .segments

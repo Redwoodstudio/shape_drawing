@@ -8,7 +8,7 @@ use bevy_prototype_lyon::prelude::{Path, ShapePath};
 
 pub struct ShapeTransformPlugin;
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 struct OverEntity {
     entity: Option<Entity>,
 }
@@ -189,7 +189,7 @@ fn debug_scale(
 
 fn update_focused_shape(query: Query<&PickingCamera>, mut over_entity: ResMut<OverEntity>) {
     if let Ok(cam) = query.get_single() {
-        match cam.intersect_top() {
+        match cam.get_nearest_intersection() {
             Some((e, _)) => over_entity.entity = Some(e),
             None => over_entity.entity = None,
         };

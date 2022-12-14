@@ -1,10 +1,9 @@
-use std::fs;
-use bevy::prelude::*;
-use bevy_mod_picking::Selection;
-use bevy_prototype_lyon::prelude::tess::geom::Segment;
-use crate::{ChangedOrderEvent, Moving, ShapeSegment};
 use crate::custom_shape::CustomShapeRaw;
 use crate::KeyCode::{Delete, Escape, PageDown, PageUp, S};
+use crate::{ChangedOrderEvent, Moving, ShapeSegment};
+use bevy::prelude::*;
+use bevy_mod_picking::Selection;
+use std::fs;
 
 pub struct KeyboardInputPlugin;
 
@@ -42,7 +41,6 @@ fn handle_keyboard_input(
             commands.entity(e).despawn();
         }
     }
-
 }
 
 fn handle_layer_change(
@@ -69,7 +67,10 @@ fn handle_layer_change(
 fn handle_save_input(input: Res<Input<KeyCode>>, shapes: Query<&CustomShapeRaw>) {
     if input.pressed(KeyCode::LControl) && input.just_pressed(S) {
         info!("saving");
-        let items = shapes.iter().map(|c| &c.segments).collect::<Vec<&Vec<ShapeSegment>>>();
+        let items = shapes
+            .iter()
+            .map(|c| &c.segments)
+            .collect::<Vec<&Vec<ShapeSegment>>>();
         let encoded: Vec<u8> = bincode::serialize(&items).unwrap();
         fs::write("foo.txt", encoded).expect("Unable to write file");
     }

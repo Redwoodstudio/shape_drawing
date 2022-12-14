@@ -1,6 +1,6 @@
 use crate::{Moving, ToolChanged};
 use bevy::prelude::*;
-use bevy_mod_picking::{PickableBundle};
+use bevy_mod_picking::PickableBundle;
 use bevy_prototype_lyon::prelude::tess::math::Point;
 
 pub fn point_from_positions(mouse: Vec2, origin: Vec2) -> Point {
@@ -24,7 +24,7 @@ pub fn handle_tool_change(
             commands
                 .entity(e)
                 .remove::<Moving>()
-                .insert_bundle(PickableBundle::default());
+                .insert(PickableBundle::default());
         }
     }
 }

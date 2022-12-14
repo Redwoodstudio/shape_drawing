@@ -70,7 +70,7 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
         Default::default(),
     );
     commands
-        .spawn_bundle(bundle)
+        .spawn(bundle)
         .insert(HighlightRect)
         .with_children(|parent| {
             for x in (-1..2)
@@ -102,15 +102,17 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
                     Transform::from_translation(Vec3::new(0.0, 0.0, 100.0)),
                 );
                 parent
-                    .spawn_bundle(b)
-                    .insert(TransformScalePick {
-                        location: x,
-                        entity: None,
-                        size: Vec2::ZERO,
-                    })
-                    .insert(Visibility { is_visible: false })
-                    .insert_bundle(PickableBundle::default())
-                    .insert(NoDeselect)
+                    .spawn(b)
+                    .insert((
+                        TransformScalePick {
+                            location: x,
+                            entity: None,
+                            size: Vec2::ZERO,
+                        },
+                        Visibility { is_visible: false },
+                        PickableBundle::default(),
+                        NoDeselect,
+                    ))
                     .with_children(|p| {
                         let b = GeometryBuilder::build_as(
                             &shapes::Rectangle {
@@ -128,13 +130,12 @@ pub fn spawn_highlight_rectangle(mut commands: Commands) {
                             },
                             Transform::from_translation(Vec3::new(0.0, 0.0, 0.0)),
                         );
-                        p.spawn_bundle(b)
-                            .insert(TransformRotationPick {
+                        p.spawn(b)
+                            .insert((TransformRotationPick {
                                 location: x,
                                 entity: None,
-                            })
-                            .insert_bundle(PickableBundle::default())
-                            .insert(NoDeselect);
+                            },PickableBundle::default(),
+                            NoDeselect));
                     });
             }
         });
@@ -300,11 +301,7 @@ impl Plugin for CustomInteractablePickingPlugin {
                     .with_run_criteria(|state: Res<PickingPluginsState>| {
                         simple_criteria(state.enable_interacting)
                     })
-                    .with_system(
-                        pause_for_picking_blockers
-                            .label(PickingSystem::PauseForBlockers)
-                            .after(PickingSystem::UpdateIntersections),
-                    )
+                    .with_system(pause_for_picking_blockers.label(PickingSystem::PauseForBlockers))
                     .with_system(
                         pause_for_egui
                             .label(PickingSystem::PauseForEgui)
@@ -333,9 +330,10 @@ impl Plugin for CustomInteractablePickingPlugin {
 
 pub struct CustomPickingPlugins;
 impl PluginGroup for CustomPickingPlugins {
-    fn build(&mut self, group: &mut PluginGroupBuilder) {
-        group.add(PickingPlugin);
-        group.add(CustomInteractablePickingPlugin);
+    fn build(self) -> PluginGroupBuilder {
+        PluginGroupBuilder::start::<Self>()
+            .add(PickingPlugin)
+            .add(CustomInteractablePickingPlugin)
     }
 }
 fn simple_criteria(flag: bool) -> ShouldRun {

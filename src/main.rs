@@ -1,70 +1,76 @@
 mod custom_shape;
 mod helpers;
+mod keyboard_input;
 mod overlap_order;
 mod picking_helpers;
 mod shape_transformation;
 mod ui;
-mod keyboard_input;
 
 use crate::custom_shape::{custom_shape_handle_creation, custom_shape_handle_update, ShapeSegment};
-use crate::picking_helpers::{spawn_highlight_rectangle, CustomPickingPlugins};
+use crate::picking_helpers::{
+    spawn_highlight_rectangle, CustomPickingPlugins,
+};
 use crate::shape_transformation::{update_origin, ShapeTransformPlugin};
 use crate::ui::UIPlugin;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
+use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use bevy::prelude::*;
+use bevy::render::settings::{WgpuFeatures, WgpuSettings};
 use bevy_egui::EguiPlugin;
 //use bevy_inspector_egui::WorldInspectorPlugin;
-use crate::helpers::{
-    global_vec_to_local, handle_tool_change,
-};
+use crate::helpers::{global_vec_to_local, handle_tool_change};
+use crate::keyboard_input::KeyboardInputPlugin;
 use crate::overlap_order::{apply_overlap_order, calculate_overlap_order};
 use crate::CoreStage::{Last, PostUpdate};
 use bevy_mod_picking::{PickableBundle, PickingCameraBundle};
 use bevy_prototype_lyon::prelude::*;
 use iyes_loopless::prelude::*;
-use crate::keyboard_input::KeyboardInputPlugin;
 
 fn main() {
     let mut app = App::new();
-    app
-        //.add_plugins_with(DefaultPlugins, |plugins| plugins.disable::<bevy::log::LogPlugin>())
-        .add_plugins(DefaultPlugins)
-        .add_plugins(CustomPickingPlugins)
-        .add_plugin(ShapePlugin)
-        .add_plugin(EguiPlugin)
-        //.add_plugin(WorldInspectorPlugin::new())
-        .add_plugin(UIPlugin)
-        .add_plugin(KeyboardInputPlugin)
-        .add_plugin(ShapeTransformPlugin)
-        //.add_plugin(DebugEventsPickingPlugin)
-        .add_startup_system(spawn_camera)
-        .add_startup_system(spawn_highlight_rectangle)
-        //.add_system(select_event)
-        .add_system(camera_zoom)
-        .add_system(mouse_position)
-        .add_system_set(
-            ConditionSet::new()
-                .run_if(should_handle_primitive)
-                .with_system(primitive_handle_creation)
-                .with_system(primitive_handle_update)
-                .into(),
-        )
-        .add_system_set(
-            ConditionSet::new()
-                .run_if(should_handle_custom_shape)
-                .with_system(custom_shape_handle_creation)
-                .with_system(custom_shape_handle_update)
-                .into(),
-        )
-        .add_system_to_stage(PostUpdate, handle_tool_change)
-        .add_system_to_stage(PostUpdate, calculate_overlap_order)
-        .add_system_to_stage(Last, apply_overlap_order)
-        .add_system_to_stage(Last, update_origin)
-        .insert_resource(ClearColor(Color::WHITE))
-        .add_event::<ChangedOrderEvent>()
-        .init_resource::<MouseMovement>()
-        .init_resource::<OrderedShapes>()
-        .init_resource::<Tool>();
+    app.insert_resource(WgpuSettings {
+        features: WgpuFeatures::POLYGON_MODE_LINE,
+        ..default()
+    })
+    //.add_plugins_with(DefaultPlugins, |plugins| plugins.disable::<bevy::log::LogPlugin>())
+    .add_plugins(DefaultPlugins)
+    .add_plugin(WireframePlugin)
+    .add_plugins(CustomPickingPlugins)
+    .add_plugin(ShapePlugin)
+    .add_plugin(EguiPlugin)
+    //.add_plugin(WorldInspectorPlugin::new())
+    .add_plugin(UIPlugin)
+    .add_plugin(KeyboardInputPlugin)
+    .add_plugin(ShapeTransformPlugin)
+    //.add_plugin(DebugEventsPickingPlugin)
+    .add_startup_system(spawn_camera)
+    .add_startup_system(spawn_highlight_rectangle)
+    //.add_system(select_event)
+    .add_system(camera_zoom)
+    .add_system(mouse_position)
+    .add_system_set(
+        ConditionSet::new()
+            .run_if(should_handle_primitive)
+            .with_system(primitive_handle_creation)
+            .with_system(primitive_handle_update)
+            .into(),
+    )
+    .add_system_set(
+        ConditionSet::new()
+            .run_if(should_handle_custom_shape)
+            .with_system(custom_shape_handle_creation)
+            .with_system(custom_shape_handle_update)
+            .into(),
+    )
+    .add_system_to_stage(PostUpdate, handle_tool_change)
+    .add_system_to_stage(PostUpdate, calculate_overlap_order)
+    .add_system_to_stage(Last, apply_overlap_order)
+    .add_system_to_stage(Last, update_origin)
+    .insert_resource(ClearColor(Color::WHITE))
+    .add_event::<ChangedOrderEvent>()
+    .init_resource::<MouseMovement>()
+    .init_resource::<OrderedShapes>()
+    .init_resource::<Tool>();
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -74,7 +80,7 @@ fn main() {
     //bevy_mod_debugdump::print_schedule(&mut app);
 }
 
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct OrderedShapes(Vec<Entity>);
 
 pub struct ChangedOrderEvent {
@@ -82,7 +88,7 @@ pub struct ChangedOrderEvent {
     pub change_up: bool,
     pub removed: bool,
 }
-#[derive(Default)]
+#[derive(Default, Resource)]
 pub struct MouseMovement {
     position: Vec2,
     normalized: Vec2,
@@ -96,6 +102,7 @@ enum ToolType {
     CustomShape,
 }
 
+#[derive(Resource)]
 pub struct Tool {
     tool: ToolType,
     color: [u8; 4],
@@ -137,10 +144,11 @@ pub struct ShapeBase {
     name: Option<String>,
     originx: Vec3,
 }
-fn spawn_camera(mut commands: Commands) {
+fn spawn_camera(mut commands: Commands, mut wireframe_config: ResMut<WireframeConfig>) {
+    wireframe_config.global = true;
     commands
-        .spawn_bundle(Camera2dBundle::default())
-        .insert_bundle(PickingCameraBundle::default());
+        .spawn(Camera2dBundle::default())
+        .insert(PickingCameraBundle::default());
 }
 
 fn primitive_handle_creation(
@@ -177,21 +185,19 @@ fn primitive_handle_creation(
         };
 
         commands
-            .spawn_bundle(shape)
-            .insert(Moving {
+            .spawn(shape)
+            .insert((Moving {
                 origin: mouse.position,
-            })
-            .insert(ShapeBase {
+            },ShapeBase {
                 name: None,
                 originx: Vec3::new(0.0, 0.0, 0.0),
-            })
-            .insert(PrimitiveShape { shape: prim_type });
+            },PrimitiveShape { shape: prim_type }));
     }
 
     if mouse_input.just_released(MouseButton::Left) {
         if let Ok(id) = query.get_single_mut() {
             commands.entity(id).remove::<Moving>();
-            commands.entity(id).insert_bundle(PickableBundle::default());
+            commands.entity(id).insert(PickableBundle::default());
         }
     }
 }
